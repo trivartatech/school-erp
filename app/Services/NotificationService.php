@@ -811,10 +811,12 @@ class NotificationService
 
         Log::info("🚀 [Voice Payload]", $payload);
 
+        $subdomain = $voiceConfig['subdomain'] ?? 'api.exotel.com';
+
         try {
             $response = Http::withBasicAuth($apiKey, $apiToken)
                 ->asForm()
-                ->post("https://api.exotel.com/v1/Accounts/{$apiSid}/Calls/connect.json", $payload);
+                ->post("https://{$subdomain}/v1/Accounts/{$apiSid}/Calls/connect.json", $payload);
 
             Log::info("Exotel API Response for Account [{$apiSid}]:", [
                 'http_status' => $response->status(),
