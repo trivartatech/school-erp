@@ -84,12 +84,21 @@ $resolveGreetingData = function () {
         }
     }
 
-    // Strategy 3: CallSid cache fallback
+    // Strategy 3: CallSid cache fallback (tts_{callSid})
     $callSid = $raw['CallSid'] ?? $raw['callsid'] ?? '';
     if (!empty($callSid)) {
         $cached = Cache::get('tts_' . $callSid);
         if ($cached) {
             Log::info("📦 Greeting data via CallSid cache [{$callSid}]", ['data' => $cached]);
+            return $cached;
+        }
+    }
+
+    // Strategy 4: Passthru cache — stored by /voice/passthru when Passthru applet fires
+    if (!empty($callSid)) {
+        $cached = Cache::get('passthru_' . $callSid);
+        if ($cached) {
+            Log::info("📦 Greeting data via passthru cache [passthru_{$callSid}]", ['data' => $cached]);
             return $cached;
         }
     }
@@ -143,6 +152,30 @@ Route::get('/voice/greeting', function () use ($resolveGreetingData) {
 
     return response('', 200)->header('Content-Type', 'text/plain');
 })->name('api.voice.greeting');
+
+// Passthru applet endpoint — Exotel Passthru POSTs here; we copy phone cache → callSid cache
+// so the subsequent Greeting applet (no customfield) can resolve TTS by CallSid.
+Route::any('/voice/passthru', function () {
+    $raw     = request()->all();
+    $callSid = $raw['CallSid'] ?? $raw['callsid'] ?? '';
+    $from    = $raw['From'] ?? $raw['CallFrom'] ?? $raw['callfrom'] ?? $raw['from'] ?? '';
+
+    Log::info('🔵 /api/voice/passthru HIT', ['callSid' => $callSid, 'from' => $from, 'all' => $raw]);
+
+    if (!empty($from)) {
+        $digits = preg_replace('/[^0-9]/', '', $from);
+        if (strlen($digits) > 10) $digits = substr($digits, -10);
+        $data = Cache::get('tts_' . $digits);
+        if ($data && !empty($callSid)) {
+            Cache::put('passthru_' . $callSid, $data, now()->addMinutes(5));
+            Log::info("💾 passthru: copied tts_{$digits} → passthru_{$callSid}");
+        } elseif (!$data) {
+            Log::warning("⚠️ passthru: cache miss for tts_{$digits}");
+        }
+    }
+
+    return response('OK', 200)->header('Content-Type', 'text/plain');
+})->name('api.voice.passthru');
 
 // Serve cached audio binary for Exotel
 // Audio files are base64-cached by NotificationService::resolveAudioUrl()
