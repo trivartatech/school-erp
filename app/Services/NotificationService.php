@@ -794,9 +794,12 @@ class NotificationService
         $callerIdDigits = preg_replace('/[^0-9]/', '', $callerId);
         if (strlen($callerIdDigits) === 10) $callerIdDigits = '0' . $callerIdDigits;
 
+        // From = customer (their phone rings first per Exotel connect.json flow)
+        // To   = ExoPhone (virtual, bridges after customer answers)
+        // Url  = ExoML fetched when customer answers → plays TTS/audio
         $payload = [
-            'From'           => $callerIdDigits,
-            'To'             => $cleanRecipient,
+            'From'           => $cleanRecipient,
+            'To'             => $callerIdDigits,
             'CallerId'       => $callerIdDigits,
             'Url'            => $exomlUrl,
             'CustomField'    => $customField,
