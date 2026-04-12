@@ -734,10 +734,10 @@ class NotificationService
             $secondaryAudio = null;
         }
 
-        // Force +91 + last 10 digits for Exotel India
+        // Force 0 + last 10 digits for Exotel India (e.g. 08660234312)
         $digits         = preg_replace('/[^0-9]/', '', $recipient);
         if (strlen($digits) > 10) $digits = substr($digits, -10);
-        $cleanRecipient = '+91' . $digits;
+        $cleanRecipient = '0' . $digits;
 
         Log::info("🔍 [Voice] Recipient: [{$recipient}] → [{$cleanRecipient}] | CallerID: [{$callerId}]");
 
@@ -790,10 +790,14 @@ class NotificationService
             's' => $content ?? '',
         ]));
 
+        // Ensure caller ID has leading 0 (Exotel India format)
+        $callerIdDigits = preg_replace('/[^0-9]/', '', $callerId);
+        if (strlen($callerIdDigits) === 10) $callerIdDigits = '0' . $callerIdDigits;
+
         $payload = [
-            'From'           => $callerId,
+            'From'           => $callerIdDigits,
             'To'             => $cleanRecipient,
-            'CallerId'       => $callerId,
+            'CallerId'       => $callerIdDigits,
             'Url'            => $exomlUrl,
             'CustomField'    => $customField,
             'CallType'       => 'trans',
