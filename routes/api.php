@@ -58,12 +58,38 @@ Route::any('/voice/direct', [\App\Http\Controllers\ExomlController::class, 'dire
 // CustomField is base64(json): {"s": "TTS text", "a": ["audio_url"], "i": "intro_url"}
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Resolve greeting data from customfield or CallSid cache fallback.
+$resolveGreetingData = function () {
+    $raw = request()->all();
+    $customField = $raw['customfield'] ?? $raw['CustomField'] ?? $raw['custom_field'] ?? '';
+
+    // Strategy 1: customfield substituted by Exotel in URL
+    if (!empty($customField) && $customField !== '{customfield}') {
+        $decoded = json_decode(base64_decode(str_replace(' ', '+', $customField)), true);
+        if (is_array($decoded)) {
+            Log::info('📦 Greeting data via customfield', ['data' => $decoded, 'all' => $raw]);
+            return $decoded;
+        }
+    }
+
+    // Strategy 2: CallSid cache (Exotel passes CallSid as POST param on applet fetches)
+    $callSid = $raw['CallSid'] ?? $raw['callsid'] ?? '';
+    if (!empty($callSid)) {
+        $cached = Cache::get('tts_' . $callSid);
+        if ($cached) {
+            Log::info("📦 Greeting data via CallSid cache [{$callSid}]", ['data' => $cached]);
+            return $cached;
+        }
+    }
+
+    Log::warning('⚠️ Greeting data not found', ['all' => $raw]);
+    return [];
+};
+
 // Greeting 1 — Intro audio (played on every call if school has intro configured)
 // Returns intro audio URL as plain text, or empty to skip.
-Route::get('/voice/intro', function () {
-    $customField = request('customfield') ?? request('CustomField') ?? request('custom_field') ?? '';
-    $data = !empty($customField) ? (json_decode(base64_decode($customField), true) ?? []) : [];
-
+Route::get('/voice/intro', function () use ($resolveGreetingData) {
+    $data = $resolveGreetingData();
     Log::info('🔔 /api/voice/intro HIT', ['ip' => request()->ip(), 'data' => $data]);
 
     $introUrl = $data['i'] ?? '';
@@ -77,10 +103,8 @@ Route::get('/voice/intro', function () {
 
 // Greeting 2 — Announcement audio (played if announcement has recorded/uploaded audio)
 // Returns announcement audio URL as plain text, or empty to skip.
-Route::get('/voice/play', function () {
-    $customField = request('customfield') ?? request('CustomField') ?? request('custom_field') ?? '';
-    $data = !empty($customField) ? (json_decode(base64_decode($customField), true) ?? []) : [];
-
+Route::get('/voice/play', function () use ($resolveGreetingData) {
+    $data = $resolveGreetingData();
     Log::info('🔊 /api/voice/play HIT', ['ip' => request()->ip(), 'data' => $data]);
 
     $audios   = $data['a'] ?? [];
@@ -95,10 +119,8 @@ Route::get('/voice/play', function () {
 
 // Greeting 3 — TTS message (played if announcement uses text-to-speech)
 // Returns TTS text as plain text, or empty to skip.
-Route::get('/voice/greeting', function () {
-    $customField = request('customfield') ?? request('CustomField') ?? request('custom_field') ?? '';
-    $data = !empty($customField) ? (json_decode(base64_decode($customField), true) ?? []) : [];
-
+Route::get('/voice/greeting', function () use ($resolveGreetingData) {
+    $data = $resolveGreetingData();
     Log::info('🎤 /api/voice/greeting HIT', ['ip' => request()->ip(), 'data' => $data]);
 
     $tts = $data['s'] ?? '';
