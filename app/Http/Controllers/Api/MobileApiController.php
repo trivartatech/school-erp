@@ -3070,32 +3070,37 @@ class MobileApiController extends Controller
         if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
 
         $data = $request->validate([
-            'class_id'    => 'required|exists:course_classes,id',
-            'section_id'  => 'required|exists:sections,id',
-            'subject_id'  => 'required|exists:subjects,id',
-            'title'       => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'due_date'    => 'required|date',
-            'max_marks'   => 'required|integer|min:1|max:9999',
-            'status'      => 'nullable|in:draft,published',
+            'class_id'     => 'required|exists:course_classes,id',
+            'section_ids'  => 'required|array|min:1',
+            'section_ids.*'=> 'required|exists:sections,id',
+            'subject_id'   => 'required|exists:subjects,id',
+            'title'        => 'required|string|max:255',
+            'description'  => 'nullable|string',
+            'due_date'     => 'required|date',
+            'max_marks'    => 'required|integer|min:1|max:9999',
+            'status'       => 'nullable|in:draft,published',
         ]);
 
-        $assignment = \App\Models\Assignment::create([
-            'school_id'        => $school->id,
-            'academic_year_id' => $yearId,
-            'class_id'         => $data['class_id'],
-            'section_id'       => $data['section_id'],
-            'subject_id'       => $data['subject_id'],
-            'teacher_id'       => $staffId,
-            'title'            => $data['title'],
-            'description'      => $data['description'] ?? null,
-            'due_date'         => $data['due_date'],
-            'max_marks'        => $data['max_marks'],
-            'status'           => $data['status'] ?? 'published',
-            'attachments'      => [],
-        ]);
+        $ids = [];
+        foreach ($data['section_ids'] as $sectionId) {
+            $a = \App\Models\Assignment::create([
+                'school_id'        => $school->id,
+                'academic_year_id' => $yearId,
+                'class_id'         => $data['class_id'],
+                'section_id'       => $sectionId,
+                'subject_id'       => $data['subject_id'],
+                'teacher_id'       => $staffId,
+                'title'            => $data['title'],
+                'description'      => $data['description'] ?? null,
+                'due_date'         => $data['due_date'],
+                'max_marks'        => $data['max_marks'],
+                'status'           => $data['status'] ?? 'published',
+                'attachments'      => [],
+            ]);
+            $ids[] = $a->id;
+        }
 
-        return response()->json(['message' => 'Assignment created.', 'id' => $assignment->id], 201);
+        return response()->json(['message' => 'Assignment created for ' . count($ids) . ' section(s).'], 201);
     }
 
     /** POST /mobile/syllabus/topics — Teacher/admin adds a syllabus topic. */
@@ -3137,14 +3142,17 @@ class MobileApiController extends Controller
         if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
 
         $data = $request->validate([
-            'class_id'     => 'required|exists:course_classes,id',
-            'section_id'   => 'nullable|exists:sections,id',
-            'subject_id'   => 'required|exists:subjects,id',
-            'title'        => 'required|string|max:255',
-            'type'         => 'required|in:pdf,doc,ppt,video,image,link,other',
-            'chapter_name' => 'nullable|string|max:255',
-            'external_url' => 'nullable|url|max:500',
-            'file'         => 'nullable|file|max:20480|mimes:pdf,doc,docx,ppt,pptx,jpg,jpeg,png,mp4,mov',
+            'class_id'      => 'required|exists:course_classes,id',
+            'section_ids'   => 'required|array|min:1',
+            'section_ids.*' => 'required|exists:sections,id',
+            'subject_id'    => 'required|exists:subjects,id',
+            'title'         => 'required|string|max:255',
+            'description'   => 'nullable|string|max:1000',
+            'type'          => 'required|in:pdf,doc,ppt,video,image,link,other',
+            'chapter_name'  => 'nullable|string|max:255',
+            'external_url'  => 'nullable|url|max:500',
+            'is_published'  => 'nullable|boolean',
+            'file'          => 'nullable|file|max:20480|mimes:pdf,doc,docx,ppt,pptx,jpg,jpeg,png,mp4,mov',
         ]);
 
         $filePath = null;
@@ -3152,21 +3160,24 @@ class MobileApiController extends Controller
             $filePath = $request->file('file')->store('academic/materials', 'public');
         }
 
-        $material = \App\Models\LearningMaterial::create([
-            'school_id'    => $school->id,
-            'class_id'     => $data['class_id'],
-            'section_id'   => $data['section_id'] ?? null,
-            'subject_id'   => $data['subject_id'],
-            'teacher_id'   => $staffId,
-            'title'        => $data['title'],
-            'type'         => $data['type'],
-            'chapter_name' => $data['chapter_name'] ?? null,
-            'file_path'    => $filePath,
-            'external_url' => $data['external_url'] ?? null,
-            'is_published' => false,
-        ]);
+        foreach ($data['section_ids'] as $sectionId) {
+            \App\Models\LearningMaterial::create([
+                'school_id'    => $school->id,
+                'class_id'     => $data['class_id'],
+                'section_id'   => $sectionId,
+                'subject_id'   => $data['subject_id'],
+                'teacher_id'   => $staffId,
+                'title'        => $data['title'],
+                'description'  => $data['description'] ?? null,
+                'type'         => $data['type'],
+                'chapter_name' => $data['chapter_name'] ?? null,
+                'file_path'    => $filePath,
+                'external_url' => $data['external_url'] ?? null,
+                'is_published' => $data['is_published'] ?? false,
+            ]);
+        }
 
-        return response()->json(['message' => 'Material uploaded.', 'id' => $material->id], 201);
+        return response()->json(['message' => 'Material uploaded to ' . count($data['section_ids']) . ' section(s).'], 201);
     }
 
     /** POST /mobile/book-list — Admin/teacher adds a book to the list. */
