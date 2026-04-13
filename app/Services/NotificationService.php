@@ -751,10 +751,14 @@ class NotificationService
         }
 
         // ── CACHE the TTS + audio under the phone key (backup fallback) ──
+        // NOTE: 'a' (announcement audio) is NOT put in the Greeting chain cache/CustomField.
+        // Exotel's Greeting applet treats ALL plain text responses as TTS — returning a URL
+        // as plain text causes Exotel to SPEAK the URL instead of playing it.
+        // Audio is delivered exclusively via StartPlaybackValueNew in the connect.json payload.
         $phoneKey  = 'tts_' . $digits;
         $cacheData = [
             'i' => $introUrl,
-            'a' => array_values(array_filter([$announcementAudio])),
+            'a' => [],               // intentionally empty — audio is in StartPlaybackValueNew
             's' => $content ?? '',
         ];
         Cache::put($phoneKey, $cacheData, now()->addMinutes(10));
@@ -768,9 +772,11 @@ class NotificationService
         $appFlowUrl = "http://my.exotel.com/{$apiSid}/exoml/start_voice/{$appId}";
 
         // CustomField: base64(JSON) — Exotel substitutes {customfield} in Greeting applet URLs
+        // 'a' is empty: Greeting 2 (/voice/play) will return empty → Exotel skips silently.
+        // Audio is played via StartPlaybackValueNew below.
         $customField = base64_encode(json_encode([
             'i' => $introUrl,
-            'a' => array_values(array_filter([$announcementAudio])),
+            'a' => [],               // intentionally empty — no audio URL in Greeting chain
             's' => $content ?? '',
         ]));
 
