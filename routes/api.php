@@ -202,6 +202,71 @@ Route::get('/voice/audio/{key}', function (string $key) {
 })->name('api.voice.audio');
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ExoML endpoint — Exotel fetches this URL when the call connects.
+// Returns ExoML with <Play> for audio and <Say> for TTS.
+// This replaces the Exotel App Builder Greeting chain for audio announcements.
+//
+// Exotel passes call params (CallFrom, CallTo, CallSid) as POST body.
+// We look up cached call data by phone number, then build ExoML dynamically.
+// ─────────────────────────────────────────────────────────────────────────────
+Route::any('/voice/exoml', function () {
+    $raw     = request()->all();
+    $callSid = $raw['CallSid'] ?? $raw['callsid'] ?? '';
+
+    Log::info('🎬 /api/voice/exoml HIT', ['all' => $raw]);
+
+    // Resolve call data: try all possible phone fields, then CallSid fallback
+    $data = [];
+    foreach (['CallTo', 'callto', 'To', 'to', 'CallFrom', 'callfrom', 'From', 'from'] as $field) {
+        $num = $raw[$field] ?? '';
+        if (empty($num)) continue;
+        $digits = preg_replace('/[^0-9]/', '', $num);
+        if (strlen($digits) > 10) $digits = substr($digits, -10);
+        $cached = Cache::get('tts_' . $digits);
+        if ($cached) {
+            Log::info("📦 ExoML data via [{$field}={$digits}]", ['data' => $cached]);
+            $data = $cached;
+            break;
+        }
+    }
+    if (empty($data) && !empty($callSid)) {
+        $cached = Cache::get('tts_' . $callSid);
+        if ($cached) {
+            Log::info("📦 ExoML data via CallSid [{$callSid}]", ['data' => $cached]);
+            $data = $cached;
+        }
+    }
+
+    if (empty($data)) {
+        Log::warning('⚠️ ExoML: no call data found', ['all' => $raw]);
+    }
+
+    $introUrl  = $data['i'] ?? '';
+    $audioUrls = $data['a'] ?? [];
+    $ttsText   = $data['s'] ?? '';
+
+    $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n<Response>\n";
+
+    if (!empty($introUrl)) {
+        $xml .= '  <Play>' . htmlspecialchars($introUrl, ENT_XML1, 'UTF-8') . '</Play>' . "\n";
+    }
+    foreach ($audioUrls as $url) {
+        if (!empty($url)) {
+            $xml .= '  <Play>' . htmlspecialchars($url, ENT_XML1, 'UTF-8') . '</Play>' . "\n";
+        }
+    }
+    if (!empty($ttsText)) {
+        $xml .= '  <Say>' . htmlspecialchars($ttsText, ENT_XML1, 'UTF-8') . '</Say>' . "\n";
+    }
+
+    $xml .= '  <Hangup/>' . "\n</Response>";
+
+    Log::info('🎬 ExoML response', ['xml' => $xml]);
+
+    return response($xml, 200)->header('Content-Type', 'application/xml');
+})->name('api.voice.exoml');
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MOBILE APP API — EduConnect Flutter App
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -295,8 +360,12 @@ Route::middleware(['auth:sanctum', 'tenant'])->prefix('mobile')->group(function 
     // Holidays
     Route::get('/holidays',             [$MA, 'holidays'])->name('api.mobile.holidays');
 
+    // Subjects for a class (used in create forms)
+    Route::get('/subjects-for-class',   [$MA, 'subjectsForClass'])->name('api.mobile.subjects-for-class');
+
     // Student Diary
     Route::get('/diary',                [$MA, 'diary'])->name('api.mobile.diary');
+    Route::post('/diary',               [$MA, 'storeDiary'])->name('api.mobile.diary.store');
     Route::post('/diary/{id}/toggle-complete', [$MA, 'toggleDiaryComplete'])->name('api.mobile.diary.toggle');
 
     // Homework Submission
@@ -304,9 +373,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->prefix('mobile')->group(function 
 
     // Assignments
     Route::get('/assignments',          [$MA, 'assignments'])->name('api.mobile.assignments');
+    Route::post('/assignments',         [$MA, 'storeAssignment'])->name('api.mobile.assignments.store');
 
     // Syllabus
     Route::get('/syllabus',             [$MA, 'syllabus'])->name('api.mobile.syllabus');
+    Route::post('/syllabus/topics',     [$MA, 'storeSyllabusTopic'])->name('api.mobile.syllabus.store-topic');
 
     // Report Cards
     Route::get('/report-cards',         [$MA, 'reportCards'])->name('api.mobile.report-cards');
@@ -317,7 +388,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->prefix('mobile')->group(function 
 
     // Library / Book List
     Route::get('/book-list',            [$MA, 'bookList'])->name('api.mobile.book-list');
+    Route::post('/book-list',           [$MA, 'storeBook'])->name('api.mobile.book-list.store');
     Route::get('/resources',            [$MA, 'resources'])->name('api.mobile.resources');
+    Route::post('/resources/material',  [$MA, 'storeMaterial'])->name('api.mobile.resources.store-material');
 
     // Student ID Card
     Route::get('/id-card',              [$MA, 'idCard'])->name('api.mobile.id-card');

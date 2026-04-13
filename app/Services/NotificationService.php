@@ -750,15 +750,12 @@ class NotificationService
             $announcementAudio = $primaryAudio ?? '';
         }
 
-        // ── CACHE the TTS + audio under the phone key (backup fallback) ──
-        // NOTE: 'a' (announcement audio) is NOT put in the Greeting chain cache/CustomField.
-        // Exotel's Greeting applet treats ALL plain text responses as TTS — returning a URL
-        // as plain text causes Exotel to SPEAK the URL instead of playing it.
-        // Audio is delivered exclusively via StartPlaybackValueNew in the connect.json payload.
+        // ── CACHE the TTS + audio under the phone key ──────────────────────────
+        // The /api/voice/exoml endpoint resolves this data by phone number to build ExoML.
         $phoneKey  = 'tts_' . $digits;
         $cacheData = [
             'i' => $introUrl,
-            'a' => [],               // intentionally empty — audio is in StartPlaybackValueNew
+            'a' => array_values(array_filter([$announcementAudio])),
             's' => $content ?? '',
         ];
         Cache::put($phoneKey, $cacheData, now()->addMinutes(10));
@@ -767,37 +764,24 @@ class NotificationService
 
         $baseUrl = rtrim(config('app.url'), '/');
 
-        // App ID from voice settings — the Exotel Greeting Chain app
-        $appId      = $voiceConfig['app_id'] ?? '1203048';
-        $appFlowUrl = "http://my.exotel.com/{$apiSid}/exoml/start_voice/{$appId}";
-
-        // CustomField: base64(JSON) — Exotel substitutes {customfield} in Greeting applet URLs
-        // 'a' is empty: Greeting 2 (/voice/play) will return empty → Exotel skips silently.
-        // Audio is played via StartPlaybackValueNew below.
-        $customField = base64_encode(json_encode([
-            'i' => $introUrl,
-            'a' => [],               // intentionally empty — no audio URL in Greeting chain
-            's' => $content ?? '',
-        ]));
+        // Use our own ExoML endpoint as the Url.
+        // Exotel fetches this when the call connects and processes the returned ExoML:
+        //   <Play> fetches the audio URL and plays it (actual audio playback)
+        //   <Say>  reads text as TTS
+        // This is more reliable than the Exotel App Builder Greeting chain which
+        // treated ALL plain text responses (including URLs) as TTS text.
+        $exomlUrl = $baseUrl . '/api/voice/exoml';
 
         // From  = customer (who gets called, shown with ExoPhone as caller ID)
         // No To — Exotel uses CallerId as the ExoPhone to originate the call
-        // Url   = Exotel internal app flow → runs the Greeting chain
+        // Url   = our ExoML endpoint → plays audio + TTS
         $payload = [
             'From'           => $cleanRecipient,
             'CallerId'       => $callerId,
-            'Url'            => $appFlowUrl,
-            'CustomField'    => $customField,
+            'Url'            => $exomlUrl,
             'CallType'       => 'trans',
             'StatusCallback' => $baseUrl . '/api/voice/status',
         ];
-
-        // If announcement has audio, use StartPlaybackValueNew to play directly
-        // Exotel plays this audio to recipient when call connects (8kHz WAV format)
-        if (!empty($announcementAudio)) {
-            $payload['StartPlaybackValueNew'] = $announcementAudio;
-            $payload['StartPlaybackToNew']    = 'Callee';
-        }
 
         Log::info("🚀 [Voice Payload]", $payload);
 
