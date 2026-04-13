@@ -110,33 +110,23 @@ $resolveGreetingData = function () {
 };
 
 // Greeting 1 — Intro audio (played on every call if school has intro configured)
-// Proxies audio bytes directly (same reason as Greeting 2 — see below).
+// Returns intro audio URL as plain text. Exotel detects the https:// prefix and fetches+plays it.
 Route::get('/voice/intro', function () use ($resolveGreetingData) {
     $data = $resolveGreetingData();
     Log::info('🔔 /api/voice/intro HIT', ['ip' => request()->ip(), 'data' => $data]);
 
     $introUrl = $data['i'] ?? '';
     if (!empty($introUrl)) {
-        if (preg_match('#/api/voice/audio/([a-zA-Z0-9]+)$#', $introUrl, $m)) {
-            $cacheKey = 'audio_' . $m[1];
-            $cached   = Cache::get($cacheKey);
-            if ($cached) {
-                $binary = base64_decode($cached['content']);
-                Log::info('🔔 Proxying intro audio bytes (' . strlen($binary) . ' bytes)');
-                return response($binary, 200)
-                    ->header('Content-Type', $cached['mime'] ?? 'audio/wav')
-                    ->header('Content-Length', strlen($binary));
-            }
-        }
-        return redirect($introUrl, 302);
+        Log::info('🔔 Intro URL: ' . $introUrl);
+        return response($introUrl, 200)->header('Content-Type', 'text/plain');
     }
 
     return response('', 200)->header('Content-Type', 'text/plain');
 })->name('api.voice.intro');
 
 // Greeting 2 — Announcement audio (played if announcement has recorded/uploaded audio)
-// Proxies audio bytes directly so Exotel receives Content-Type: audio/wav and plays it.
-// Returning a URL as plain text causes Exotel to speak the URL as TTS — do NOT do that.
+// Returns audio URL as plain text. Exotel detects https:// prefix, fetches the URL, and plays it.
+// The URL points to /api/voice/wav/{path} which serves raw WAV bytes with Content-Type: audio/wav.
 Route::get('/voice/play', function () use ($resolveGreetingData) {
     $data = $resolveGreetingData();
     Log::info('🔊 /api/voice/play HIT', ['ip' => request()->ip(), 'data' => $data]);
@@ -145,23 +135,8 @@ Route::get('/voice/play', function () use ($resolveGreetingData) {
     $audioUrl = !empty($audios) ? $audios[0] : '';
 
     if (!empty($audioUrl)) {
-        // Extract cache key from our /api/voice/audio/{key} URL and proxy bytes directly.
-        // This way Exotel receives audio/wav bytes, not a URL string it would speak as TTS.
-        if (preg_match('#/api/voice/audio/([a-zA-Z0-9]+)$#', $audioUrl, $m)) {
-            $cacheKey = 'audio_' . $m[1];
-            $cached   = Cache::get($cacheKey);
-            if ($cached) {
-                $binary = base64_decode($cached['content']);
-                Log::info('🔊 Proxying audio bytes (' . strlen($binary) . ' bytes)');
-                return response($binary, 200)
-                    ->header('Content-Type', $cached['mime'] ?? 'audio/wav')
-                    ->header('Content-Length', strlen($binary));
-            }
-            Log::warning('🔊 Cache miss for audio key: ' . $cacheKey);
-        }
-        // Fallback: redirect (Exotel may follow redirect to audio URL)
-        Log::info('🔊 Redirecting to audio URL: ' . $audioUrl);
-        return redirect($audioUrl, 302);
+        Log::info('🔊 Audio URL: ' . $audioUrl);
+        return response($audioUrl, 200)->header('Content-Type', 'text/plain');
     }
 
     return response('', 200)->header('Content-Type', 'text/plain');
@@ -227,6 +202,36 @@ Route::get('/voice/audio/{key}', function (string $key) {
         ->header('Accept-Ranges', 'bytes')
         ->header('Cache-Control', 'no-store');
 })->name('api.voice.audio');
+
+// Serve announcement audio directly from storage with explicit Content-Type: audio/wav.
+// Path is base64-encoded storage-relative path (e.g. base64("announcements/foo.wav")).
+// Exotel fetches this URL when /voice/play returns it as plain text.
+Route::get('/voice/wav/{encoded}', function (string $encoded) {
+    $storagePath = base64_decode(str_replace(['-', '_'], ['+', '/'], $encoded));
+    $disk        = \Illuminate\Support\Facades\Storage::disk('public');
+
+    Log::info('🎵 /api/voice/wav HIT', ['path' => $storagePath, 'ip' => request()->ip()]);
+
+    if (!$storagePath || !$disk->exists($storagePath)) {
+        Log::warning('🎵 /api/voice/wav NOT FOUND: ' . $storagePath);
+        return response('Not found.', 404);
+    }
+
+    $bytes    = $disk->get($storagePath);
+    $mimeType = $disk->mimeType($storagePath) ?: 'audio/wav';
+    // Normalise x-wav aliases so Exotel recognises the type
+    if (in_array($mimeType, ['audio/x-wav', 'audio/wave', 'audio/vnd.wave'])) {
+        $mimeType = 'audio/wav';
+    }
+
+    Log::info('🎵 /api/voice/wav serving ' . strlen($bytes) . ' bytes as ' . $mimeType);
+
+    return response($bytes, 200)
+        ->header('Content-Type', $mimeType)
+        ->header('Content-Length', strlen($bytes))
+        ->header('Accept-Ranges', 'bytes')
+        ->header('Cache-Control', 'no-store');
+})->name('api.voice.wav');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ExoML endpoint — Exotel fetches this URL when the call connects.

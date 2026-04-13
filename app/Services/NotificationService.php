@@ -583,18 +583,16 @@ class NotificationService
             || str_ends_with(strtolower($pathOrUrl), '.webm');
 
         if (!$needsConversion) {
-            // Already WAV or MP3 — serve via /api/voice/audio/{key} so Exotel gets
-            // an explicit Content-Type: audio/wav header (static files may get
-            // application/octet-stream from Nginx which Exotel silently skips).
-            $bytes    = $disk->get($pathOrUrl);
-            $cacheKey = 'audio_' . \Illuminate\Support\Str::random(16);
-            Cache::put($cacheKey, ['content' => base64_encode($bytes), 'mime' => 'audio/wav'], now()->addMinutes(30));
-            $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/audio/' . substr($cacheKey, 6);
-            Log::info("🎵 [Audio] Cached [{$pathOrUrl}] → [{$publicUrl}]");
+            // Already WAV or MP3 — serve via /api/voice/wav/{encoded} which sets
+            // an explicit Content-Type header. Nginx may return application/octet-stream
+            // for static files which Exotel would silently skip.
+            $encoded   = rtrim(strtr(base64_encode($pathOrUrl), '+/', '-_'), '=');
+            $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/wav/' . $encoded;
+            Log::info("🎵 [Audio] WAV URL [{$pathOrUrl}] → [{$publicUrl}]");
             return $publicUrl;
         }
 
-        // WebM (browser recording) — convert to 8kHz WAV first
+        // WebM (browser recording) — convert to 8kHz WAV first, save to storage
         $absolutePath = $disk->path($pathOrUrl);
         $wavBytes     = $this->convertToWav($absolutePath);
 
@@ -603,10 +601,12 @@ class NotificationService
             return null;
         }
 
-        $cacheKey  = 'audio_' . \Illuminate\Support\Str::random(16);
-        Cache::put($cacheKey, ['content' => base64_encode($wavBytes), 'mime' => 'audio/wav'], now()->addMinutes(30));
-        $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/audio/' . substr($cacheKey, 6);
-        Log::info("🎵 [Audio] Converted WebM → WAV [{$pathOrUrl}] → [{$publicUrl}]");
+        // Save converted WAV to storage so /api/voice/wav can serve it
+        $wavPath = preg_replace('/\.webm$/i', '.wav', $pathOrUrl);
+        $disk->put($wavPath, $wavBytes);
+        $encoded   = rtrim(strtr(base64_encode($wavPath), '+/', '-_'), '=');
+        $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/wav/' . $encoded;
+        Log::info("🎵 [Audio] Converted WebM → WAV [{$pathOrUrl}] → [{$wavPath}] → [{$publicUrl}]");
 
         return $publicUrl;
     }
