@@ -3012,18 +3012,19 @@ class MobileApiController extends Controller
         $classId = $request->get('class_id');
         if (!$classId) return response()->json(['subjects' => []]);
 
-        $class = \App\Models\CourseClass::where('school_id', $school->id)
-            ->with(['subjects:id,name', 'sections.subjects:id,name'])
-            ->find($classId);
-        if (!$class) return response()->json(['subjects' => []]);
+        // Use ClassSubject pivot model — most reliable; covers class-level and
+        // section-level subject assignments in one query.
+        $subjects = \App\Models\ClassSubject::where('school_id', $school->id)
+            ->where('course_class_id', $classId)
+            ->with('subject:id,name')
+            ->get()
+            ->pluck('subject')
+            ->filter()
+            ->unique('id')
+            ->values()
+            ->map(fn($s) => ['id' => $s->id, 'name' => $s->name]);
 
-        $map = [];
-        foreach ($class->subjects as $s) $map[$s->id] = ['id' => $s->id, 'name' => $s->name];
-        foreach ($class->sections as $sec) {
-            foreach ($sec->subjects as $s) $map[$s->id] = ['id' => $s->id, 'name' => $s->name];
-        }
-
-        return response()->json(['subjects' => array_values($map)]);
+        return response()->json(['subjects' => $subjects]);
     }
 
     /** POST /mobile/diary — Teacher/admin creates a diary entry. */
@@ -3037,12 +3038,21 @@ class MobileApiController extends Controller
         if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
 
         $data = $request->validate([
-            'class_id'   => 'required|exists:course_classes,id',
-            'section_id' => 'required|exists:sections,id',
-            'subject_id' => 'required|exists:subjects,id',
-            'date'       => 'required|date',
-            'content'    => 'required|string|max:5000',
+            'class_id'      => 'required|exists:course_classes,id',
+            'section_id'    => 'required|exists:sections,id',
+            'subject_id'    => 'required|exists:subjects,id',
+            'date'          => 'required|date',
+            'content'       => 'required|string|max:5000',
+            'attachments'   => 'nullable|array',
+            'attachments.*' => 'nullable|file|max:10240|mimes:pdf,ppt,pptx,doc,docx,jpg,jpeg,png,zip',
         ]);
+
+        $attachments = [];
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $attachments[] = $file->store('academic/diary', 'public');
+            }
+        }
 
         $diary = \App\Models\StudentDiary::create([
             'school_id'        => $school->id,
@@ -3053,7 +3063,7 @@ class MobileApiController extends Controller
             'teacher_id'       => $staffId,
             'date'             => $data['date'],
             'content'          => strip_tags($data['content']),
-            'attachments'      => [],
+            'attachments'      => $attachments,
         ]);
 
         return response()->json(['message' => 'Diary entry created.', 'id' => $diary->id], 201);
@@ -3070,16 +3080,25 @@ class MobileApiController extends Controller
         if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
 
         $data = $request->validate([
-            'class_id'     => 'required|exists:course_classes,id',
-            'section_ids'  => 'required|array|min:1',
-            'section_ids.*'=> 'required|exists:sections,id',
-            'subject_id'   => 'required|exists:subjects,id',
-            'title'        => 'required|string|max:255',
-            'description'  => 'nullable|string',
-            'due_date'     => 'required|date',
-            'max_marks'    => 'required|integer|min:1|max:9999',
-            'status'       => 'nullable|in:draft,published',
+            'class_id'      => 'required|exists:course_classes,id',
+            'section_ids'   => 'required|array|min:1',
+            'section_ids.*' => 'required|exists:sections,id',
+            'subject_id'    => 'required|exists:subjects,id',
+            'title'         => 'required|string|max:255',
+            'description'   => 'nullable|string',
+            'due_date'      => 'required|date',
+            'max_marks'     => 'required|integer|min:1|max:9999',
+            'status'        => 'nullable|in:draft,published',
+            'attachments'   => 'nullable|array',
+            'attachments.*' => 'nullable|file|max:10240|mimes:pdf,ppt,pptx,doc,docx,jpg,jpeg,png,zip',
         ]);
+
+        $attachments = [];
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $attachments[] = $file->store('academic/assignments', 'public');
+            }
+        }
 
         $ids = [];
         foreach ($data['section_ids'] as $sectionId) {
@@ -3095,7 +3114,7 @@ class MobileApiController extends Controller
                 'due_date'         => $data['due_date'],
                 'max_marks'        => $data['max_marks'],
                 'status'           => $data['status'] ?? 'published',
-                'attachments'      => [],
+                'attachments'      => $attachments,
             ]);
             $ids[] = $a->id;
         }
