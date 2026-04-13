@@ -359,37 +359,29 @@ IMPORTANT — Respond ONLY with this exact JSON (no markdown, no code fences):
 
 follow_ups: 3 short questions the user would naturally ask next.";
 
-        // Build conversation history for Gemini
-        $contents = [];
+        // Build conversation history for Groq
+        $messages = [
+            ['role' => 'system', 'content' => $systemContext],
+        ];
 
-        // Add history
         foreach ($request->history ?? [] as $msg) {
-            $contents[] = [
-                'role'  => $msg['role'] === 'user' ? 'user' : 'model',
-                'parts' => [['text' => $msg['content']]],
+            $messages[] = [
+                'role'    => $msg['role'] === 'user' ? 'user' : 'assistant',
+                'content' => $msg['content'],
             ];
         }
 
-        // Add current message
-        $contents[] = [
-            'role'  => 'user',
-            'parts' => [['text' => $request->message]],
-        ];
+        $messages[] = ['role' => 'user', 'content' => $request->message];
 
         try {
-            $response = Http::timeout(45)->post(
-                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . config('services.gemini.key'),
-                [
-                    'system_instruction' => [
-                        'parts' => [['text' => $systemContext]],
-                    ],
-                    'contents'           => $contents,
-                    'generationConfig'   => [
-                        'temperature'     => 0.7,
-                        'maxOutputTokens' => 800,
-                    ],
-                ]
-            );
+            $response = Http::withToken(config('services.groq.key'))
+                ->timeout(45)
+                ->post('https://api.groq.com/openai/v1/chat/completions', [
+                    'model'       => 'llama-3.3-70b-versatile',
+                    'messages'    => $messages,
+                    'temperature' => 0.7,
+                    'max_tokens'  => 800,
+                ]);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
             \Illuminate\Support\Facades\Log::error('AI chat connection timeout', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'The AI service took too long to respond. Please try again.'], 503);
@@ -400,11 +392,11 @@ follow_ups: 3 short questions the user would naturally ask next.";
 
         if ($response->failed()) {
             $errMsg = $response->json('error.message') ?? 'AI service unavailable. Please try again.';
-            \Illuminate\Support\Facades\Log::error('Gemini API error', ['status' => $response->status(), 'body' => $response->body()]);
+            \Illuminate\Support\Facades\Log::error('Groq API error', ['status' => $response->status(), 'body' => $response->body()]);
             return response()->json(['error' => $errMsg], 503);
         }
 
-        $raw    = $response->json('candidates.0.content.parts.0.text') ?? '';
+        $raw    = $response->json('choices.0.message.content') ?? '';
         $start  = strpos($raw, '{');
         $end    = strrpos($raw, '}');
         $parsed = null;
@@ -460,26 +452,21 @@ Respond ONLY with a valid JSON array in this exact format (no markdown, no extra
 
 Generate exactly {$count} comments, one per student ID.";
 
-        $response = Http::timeout(60)->post(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . config('services.gemini.key'),
-            [
-                'contents' => [
-                    ['role' => 'user', 'parts' => [['text' => $prompt]]],
-                ],
-                'generationConfig' => [
-                    'temperature'     => 0.8,
-                    'maxOutputTokens' => 2000,
-                    'thinkingConfig'  => ['thinkingBudget' => 0],
-                ],
-            ]
-        );
+        $response = Http::withToken(config('services.groq.key'))
+            ->timeout(60)
+            ->post('https://api.groq.com/openai/v1/chat/completions', [
+                'model'       => 'llama-3.3-70b-versatile',
+                'messages'    => [['role' => 'user', 'content' => $prompt]],
+                'temperature' => 0.8,
+                'max_tokens'  => 2000,
+            ]);
 
         if ($response->failed()) {
             $errMsg = $response->json('error.message') ?? 'AI service unavailable.';
             return response()->json(['error' => $errMsg], 503);
         }
 
-        $raw = $response->json('candidates.0.content.parts.0.text') ?? '';
+        $raw = $response->json('choices.0.message.content') ?? '';
         $start = strpos($raw, '[');
         $end   = strrpos($raw, ']');
         if ($start !== false && $end !== false) {

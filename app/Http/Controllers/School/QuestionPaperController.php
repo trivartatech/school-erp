@@ -152,19 +152,14 @@ Respond ONLY with valid JSON (no markdown, no code fences, no extra text):
 }";
 
         try {
-            $response = Http::timeout(90)->post(
-                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . config('services.gemini.key'),
-                [
-                    'contents' => [
-                        ['role' => 'user', 'parts' => [['text' => $prompt]]],
-                    ],
-                    'generationConfig' => [
-                        'temperature'     => 0.7,
-                        'maxOutputTokens' => 8192,
-                        'thinkingConfig'  => ['thinkingBudget' => 0],
-                    ],
-                ]
-            );
+            $response = Http::withToken(config('services.groq.key'))
+                ->timeout(90)
+                ->post('https://api.groq.com/openai/v1/chat/completions', [
+                    'model'       => 'llama-3.3-70b-versatile',
+                    'messages'    => [['role' => 'user', 'content' => $prompt]],
+                    'temperature' => 0.7,
+                    'max_tokens'  => 8192,
+                ]);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
             Log::error('Question paper AI timeout', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'The AI service took too long to respond. Please try again.'], 503);
@@ -175,11 +170,11 @@ Respond ONLY with valid JSON (no markdown, no code fences, no extra text):
 
         if ($response->failed()) {
             $errMsg = $response->json('error.message') ?? 'AI service unavailable. Please try again.';
-            Log::error('Gemini API error', ['status' => $response->status(), 'body' => $response->body()]);
+            Log::error('Groq API error', ['status' => $response->status(), 'body' => $response->body()]);
             return response()->json(['error' => $errMsg], 503);
         }
 
-        $raw = $response->json('candidates.0.content.parts.0.text') ?? '';
+        $raw = $response->json('choices.0.message.content') ?? '';
 
         // Strip markdown code fences if present
         $raw = preg_replace('/^```(?:json)?\s*/m', '', $raw);
@@ -260,19 +255,14 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 }";
 
         try {
-            $response = Http::timeout(60)->post(
-                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . config('services.gemini.key'),
-                [
-                    'contents' => [
-                        ['role' => 'user', 'parts' => [['text' => $prompt]]],
-                    ],
-                    'generationConfig' => [
-                        'temperature'     => 0.7,
-                        'maxOutputTokens' => 4096,
-                        'thinkingConfig'  => ['thinkingBudget' => 0],
-                    ],
-                ]
-            );
+            $response = Http::withToken(config('services.groq.key'))
+                ->timeout(60)
+                ->post('https://api.groq.com/openai/v1/chat/completions', [
+                    'model'       => 'llama-3.3-70b-versatile',
+                    'messages'    => [['role' => 'user', 'content' => $prompt]],
+                    'temperature' => 0.7,
+                    'max_tokens'  => 4096,
+                ]);
         } catch (\Throwable $e) {
             Log::error('Regenerate section AI error', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'AI service error. Please try again.'], 503);
@@ -282,7 +272,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
             return response()->json(['error' => $response->json('error.message') ?? 'AI service unavailable.'], 503);
         }
 
-        $raw = $response->json('candidates.0.content.parts.0.text') ?? '';
+        $raw = $response->json('choices.0.message.content') ?? '';
         $raw = preg_replace('/^```(?:json)?\s*/m', '', $raw);
         $raw = preg_replace('/```\s*$/m', '', $raw);
         $start = strpos($raw, '{');

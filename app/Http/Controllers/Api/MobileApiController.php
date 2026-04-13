@@ -2999,4 +2999,206 @@ class MobileApiController extends Controller
         return app(\App\Http\Controllers\School\AiInsightsController::class)
             ->queryData($request);
     }
+
+    // ── Academic Create Endpoints ────────────────────────────────────────────
+
+    /**
+     * Return merged subjects (class-level + section-level) for a given class.
+     * Used by mobile create forms to populate subject picker.
+     */
+    public function subjectsForClass(Request $request): JsonResponse
+    {
+        $school  = app('current_school');
+        $classId = $request->get('class_id');
+        if (!$classId) return response()->json(['subjects' => []]);
+
+        $class = \App\Models\CourseClass::where('school_id', $school->id)
+            ->with(['subjects:id,name', 'sections.subjects:id,name'])
+            ->find($classId);
+        if (!$class) return response()->json(['subjects' => []]);
+
+        $map = [];
+        foreach ($class->subjects as $s) $map[$s->id] = ['id' => $s->id, 'name' => $s->name];
+        foreach ($class->sections as $sec) {
+            foreach ($sec->subjects as $s) $map[$s->id] = ['id' => $s->id, 'name' => $s->name];
+        }
+
+        return response()->json(['subjects' => array_values($map)]);
+    }
+
+    /** POST /mobile/diary — Teacher/admin creates a diary entry. */
+    public function storeDiary(Request $request): JsonResponse
+    {
+        $user    = $request->user();
+        $school  = app('current_school');
+        $yearId  = app('current_academic_year_id');
+        $staffId = $user->staff?->id;
+        $isAdmin = in_array($user->user_type->value, ['admin', 'school_admin', 'principal', 'super_admin']);
+        if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
+
+        $data = $request->validate([
+            'class_id'   => 'required|exists:course_classes,id',
+            'section_id' => 'required|exists:sections,id',
+            'subject_id' => 'required|exists:subjects,id',
+            'date'       => 'required|date',
+            'content'    => 'required|string|max:5000',
+        ]);
+
+        $diary = \App\Models\StudentDiary::create([
+            'school_id'        => $school->id,
+            'academic_year_id' => $yearId,
+            'class_id'         => $data['class_id'],
+            'section_id'       => $data['section_id'],
+            'subject_id'       => $data['subject_id'],
+            'teacher_id'       => $staffId,
+            'date'             => $data['date'],
+            'content'          => strip_tags($data['content']),
+            'attachments'      => [],
+        ]);
+
+        return response()->json(['message' => 'Diary entry created.', 'id' => $diary->id], 201);
+    }
+
+    /** POST /mobile/assignments — Teacher/admin creates an assignment. */
+    public function storeAssignment(Request $request): JsonResponse
+    {
+        $user    = $request->user();
+        $school  = app('current_school');
+        $yearId  = app('current_academic_year_id');
+        $staffId = $user->staff?->id;
+        $isAdmin = in_array($user->user_type->value, ['admin', 'school_admin', 'principal', 'super_admin']);
+        if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
+
+        $data = $request->validate([
+            'class_id'    => 'required|exists:course_classes,id',
+            'section_id'  => 'required|exists:sections,id',
+            'subject_id'  => 'required|exists:subjects,id',
+            'title'       => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'due_date'    => 'required|date',
+            'max_marks'   => 'required|integer|min:1|max:9999',
+            'status'      => 'nullable|in:draft,published',
+        ]);
+
+        $assignment = \App\Models\Assignment::create([
+            'school_id'        => $school->id,
+            'academic_year_id' => $yearId,
+            'class_id'         => $data['class_id'],
+            'section_id'       => $data['section_id'],
+            'subject_id'       => $data['subject_id'],
+            'teacher_id'       => $staffId,
+            'title'            => $data['title'],
+            'description'      => $data['description'] ?? null,
+            'due_date'         => $data['due_date'],
+            'max_marks'        => $data['max_marks'],
+            'status'           => $data['status'] ?? 'published',
+            'attachments'      => [],
+        ]);
+
+        return response()->json(['message' => 'Assignment created.', 'id' => $assignment->id], 201);
+    }
+
+    /** POST /mobile/syllabus/topics — Teacher/admin adds a syllabus topic. */
+    public function storeSyllabusTopic(Request $request): JsonResponse
+    {
+        $user    = $request->user();
+        $school  = app('current_school');
+        $staffId = $user->staff?->id;
+        $isAdmin = in_array($user->user_type->value, ['admin', 'school_admin', 'principal', 'super_admin']);
+        if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
+
+        $data = $request->validate([
+            'class_id'     => 'required|exists:course_classes,id',
+            'subject_id'   => 'required|exists:subjects,id',
+            'chapter_name' => 'required|string|max:255',
+            'topic_name'   => 'required|string|max:255',
+            'sort_order'   => 'nullable|integer|min:1',
+        ]);
+
+        $topic = \App\Models\SyllabusTopic::create([
+            'school_id'    => $school->id,
+            'class_id'     => $data['class_id'],
+            'subject_id'   => $data['subject_id'],
+            'chapter_name' => $data['chapter_name'],
+            'topic_name'   => $data['topic_name'],
+            'sort_order'   => $data['sort_order'] ?? 1,
+        ]);
+
+        return response()->json(['message' => 'Topic added.', 'id' => $topic->id], 201);
+    }
+
+    /** POST /mobile/resources/material — Teacher/admin uploads a learning material. */
+    public function storeMaterial(Request $request): JsonResponse
+    {
+        $user    = $request->user();
+        $school  = app('current_school');
+        $staffId = $user->staff?->id;
+        $isAdmin = in_array($user->user_type->value, ['admin', 'school_admin', 'principal', 'super_admin']);
+        if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
+
+        $data = $request->validate([
+            'class_id'     => 'required|exists:course_classes,id',
+            'section_id'   => 'nullable|exists:sections,id',
+            'subject_id'   => 'required|exists:subjects,id',
+            'title'        => 'required|string|max:255',
+            'type'         => 'required|in:pdf,doc,ppt,video,image,link,other',
+            'chapter_name' => 'nullable|string|max:255',
+            'external_url' => 'nullable|url|max:500',
+            'file'         => 'nullable|file|max:20480|mimes:pdf,doc,docx,ppt,pptx,jpg,jpeg,png,mp4,mov',
+        ]);
+
+        $filePath = null;
+        if ($request->hasFile('file') && $request->file('file')->isValid()) {
+            $filePath = $request->file('file')->store('academic/materials', 'public');
+        }
+
+        $material = \App\Models\LearningMaterial::create([
+            'school_id'    => $school->id,
+            'class_id'     => $data['class_id'],
+            'section_id'   => $data['section_id'] ?? null,
+            'subject_id'   => $data['subject_id'],
+            'teacher_id'   => $staffId,
+            'title'        => $data['title'],
+            'type'         => $data['type'],
+            'chapter_name' => $data['chapter_name'] ?? null,
+            'file_path'    => $filePath,
+            'external_url' => $data['external_url'] ?? null,
+            'is_published' => false,
+        ]);
+
+        return response()->json(['message' => 'Material uploaded.', 'id' => $material->id], 201);
+    }
+
+    /** POST /mobile/book-list — Admin/teacher adds a book to the list. */
+    public function storeBook(Request $request): JsonResponse
+    {
+        $user    = $request->user();
+        $school  = app('current_school');
+        $yearId  = app('current_academic_year_id');
+        $staffId = $user->staff?->id;
+        $isAdmin = in_array($user->user_type->value, ['admin', 'school_admin', 'principal', 'super_admin']);
+        if (!$isAdmin && !$staffId) return response()->json(['message' => 'Unauthorized.'], 403);
+
+        $data = $request->validate([
+            'class_id'   => 'required|exists:course_classes,id',
+            'subject_id' => 'required|exists:subjects,id',
+            'book_name'  => 'required|string|max:255',
+            'publisher'  => 'nullable|string|max:255',
+            'author'     => 'nullable|string|max:255',
+            'isbn'       => 'nullable|string|max:20',
+        ]);
+
+        $book = \App\Models\BookList::create([
+            'school_id'        => $school->id,
+            'academic_year_id' => $yearId,
+            'class_id'         => $data['class_id'],
+            'subject_id'       => $data['subject_id'],
+            'book_name'        => $data['book_name'],
+            'publisher'        => $data['publisher'] ?? null,
+            'author'           => $data['author'] ?? null,
+            'isbn'             => $data['isbn'] ?? null,
+        ]);
+
+        return response()->json(['message' => 'Book added to list.', 'id' => $book->id], 201);
+    }
 }

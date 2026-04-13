@@ -264,23 +264,20 @@ Field rules:
 - metric: the single most important stat for this insight (e.g. \"87.3%\", \"₹1.2L\", \"23 students\") — use actual numbers from the data
 - Be specific, always use real numbers from the data provided.";
 
-        $response = Http::timeout(60)->post(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . config('services.gemini.key'),
-            [
-                'contents'         => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-                'generationConfig' => [
-                    'temperature'     => 0.4,
-                    'maxOutputTokens' => 3000,
-                    'thinkingConfig'  => ['thinkingBudget' => 0],
-                ],
-            ]
-        );
+        $response = Http::withToken(config('services.groq.key'))
+            ->timeout(60)
+            ->post('https://api.groq.com/openai/v1/chat/completions', [
+                'model'       => 'llama-3.3-70b-versatile',
+                'messages'    => [['role' => 'user', 'content' => $prompt]],
+                'temperature' => 0.4,
+                'max_tokens'  => 3000,
+            ]);
 
         if ($response->failed()) {
             return response()->json(['error' => $response->json('error.message') ?? 'AI unavailable.'], 503);
         }
 
-        $raw   = $response->json('candidates.0.content.parts.0.text') ?? '';
+        $raw   = $response->json('choices.0.message.content') ?? '';
         $start = strpos($raw, '[');
         $end   = strrpos($raw, ']');
         if ($start === false || $end === false) {
@@ -344,22 +341,20 @@ Also suggest exactly 3 short follow-up questions the user might want to ask next
 Respond ONLY with valid JSON (no markdown):
 {\"answer\": \"your answer here\", \"follow_ups\": [\"Question 1?\", \"Question 2?\", \"Question 3?\"]}";
 
-        $response = Http::timeout(30)->post(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . config('services.gemini.key'),
-            [
-                'contents'         => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-                'generationConfig' => [
-                    'temperature'     => 0.3,
-                    'maxOutputTokens' => 600,
-                ],
-            ]
-        );
+        $response = Http::withToken(config('services.groq.key'))
+            ->timeout(30)
+            ->post('https://api.groq.com/openai/v1/chat/completions', [
+                'model'       => 'llama-3.3-70b-versatile',
+                'messages'    => [['role' => 'user', 'content' => $prompt]],
+                'temperature' => 0.3,
+                'max_tokens'  => 600,
+            ]);
 
         if ($response->failed()) {
             return response()->json(['error' => $response->json('error.message') ?? 'AI unavailable.'], 503);
         }
 
-        $raw    = $response->json('candidates.0.content.parts.0.text') ?? '';
+        $raw    = $response->json('choices.0.message.content') ?? '';
         $start  = strpos($raw, '{');
         $end    = strrpos($raw, '}');
         $parsed = null;
