@@ -201,7 +201,7 @@ const exportCSV = () => {
                     Reset Progress
                 </Button>
                 <!-- Add Topic -->
-                <Button v-if="can('create_academic')" @click="showAddTopic = true">
+                <Button v-if="can('create_academic')" as="link" :href="route('school.academic.syllabus.create')">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>

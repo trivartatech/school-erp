@@ -130,11 +130,11 @@ const duplicateAssignment = (assignment) => {
                     base-url="/school/export/assignments"
                     :params="{ class_id: filterForm.class_id, subject_id: filterForm.subject_id, status: filterForm.status }"
                 />
-                <Button v-if="can('create_academic')" @click="showCreateModal = true">
+                <Button v-if="can('create_academic')" as="link" :href="route('school.academic.assignments.create')">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
-                    Create Assignment
+                    New Assignment
                 </Button>
             </div>
         </div>

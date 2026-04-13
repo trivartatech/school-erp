@@ -15,6 +15,21 @@ use Inertia\Inertia;
 
 class SyllabusController extends Controller
 {
+    public function create()
+    {
+        $schoolId = app('current_school_id');
+        $scope    = app(TeacherScopeService::class)->for(auth()->user());
+
+        $classQuery = CourseClass::where('school_id', $schoolId)->with(['subjects', 'sections.subjects']);
+        if ($scope->restricted && $scope->classIds->isNotEmpty()) {
+            $classQuery->whereIn('id', $scope->classIds);
+        }
+
+        return Inertia::render('School/Academic/Syllabus/Create', [
+            'classes' => $classQuery->orderBy('numeric_value')->get(),
+        ]);
+    }
+
     public function index(Request $request)
     {
         $schoolId = app('current_school_id');

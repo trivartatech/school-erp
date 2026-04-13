@@ -14,6 +14,18 @@ use Inertia\Inertia;
 
 class ResourceController extends Controller
 {
+    public function createMaterial()
+    {
+        $schoolId = app('current_school_id');
+
+        return Inertia::render('School/Academic/Resources/CreateMaterial', [
+            'courseClasses' => CourseClass::where('school_id', $schoolId)
+                ->with(['subjects', 'sections.subjects'])
+                ->orderBy('numeric_value')
+                ->get(),
+        ]);
+    }
+
     public function index(Request $request)
     {
         $schoolId = app('current_school_id');

@@ -12,6 +12,15 @@ use Inertia\Inertia;
 
 class BookListController extends Controller
 {
+    public function create()
+    {
+        $schoolId = app('current_school_id');
+
+        return Inertia::render('School/Academic/BookList/Create', [
+            'classes' => CourseClass::where('school_id', $schoolId)->orderBy('numeric_value')->get(),
+        ]);
+    }
+
     public function index(Request $request)
     {
         $schoolId       = app('current_school_id');

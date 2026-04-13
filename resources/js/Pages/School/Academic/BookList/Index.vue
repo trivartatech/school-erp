@@ -98,7 +98,7 @@ const grouped = computed(() => {
                     base-url="/school/export/book-list"
                     :params="{ class_id: filterClassId }"
                 />
-                <Button v-if="can('create_academic')" @click="showAddModal = true">
+                <Button v-if="can('create_academic')" as="link" :href="route('school.academic.book-list.create')">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>

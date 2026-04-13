@@ -589,6 +589,7 @@ Route::middleware('auth')->group(function () {
                 Route::resource('assignments', \App\Http\Controllers\School\Academic\AssignmentController::class);
 
                 // Syllabus
+                Route::get('syllabus/create', [\App\Http\Controllers\School\Academic\SyllabusController::class, 'create'])->name('syllabus.create');
                 Route::get('syllabus', [\App\Http\Controllers\School\Academic\SyllabusController::class, 'index'])->name('syllabus.index');
                 Route::post('syllabus/topics', [\App\Http\Controllers\School\Academic\SyllabusController::class, 'storeTopic'])->name('syllabus.store-topic');
                 Route::put('syllabus/topics/{topic}', [\App\Http\Controllers\School\Academic\SyllabusController::class, 'updateTopic'])->name('syllabus.update-topic');
@@ -598,6 +599,7 @@ Route::middleware('auth')->group(function () {
                 Route::get('syllabus/export', [\App\Http\Controllers\School\Academic\SyllabusController::class, 'export'])->name('syllabus.export');
 
                 // Resources (Online Classes & Learning Materials)
+                Route::get('resources/material/create', [\App\Http\Controllers\School\Academic\ResourceController::class, 'createMaterial'])->name('resources.create-material');
                 Route::get('resources', [\App\Http\Controllers\School\Academic\ResourceController::class, 'index'])->name('resources.index');
                 Route::post('resources/online-class', [\App\Http\Controllers\School\Academic\ResourceController::class, 'storeOnlineClass'])->name('resources.store-online-class');
                 Route::post('resources/material', [\App\Http\Controllers\School\Academic\ResourceController::class, 'storeMaterial'])->name('resources.store-material');
@@ -624,6 +626,7 @@ Route::middleware('auth')->group(function () {
                 Route::get('health-score', [\App\Http\Controllers\School\Academic\AcademicDashboardController::class, 'healthScore'])->name('health-score');
 
                 // Book List
+                Route::get('book-list/create', [\App\Http\Controllers\School\Academic\BookListController::class, 'create'])->name('book-list.create');
                 Route::get('book-list/export', [\App\Http\Controllers\School\Academic\BookListController::class, 'export'])->name('book-list.export');
                 Route::get('book-list/subjects-for-class/{classId}', [\App\Http\Controllers\School\Academic\BookListController::class, 'subjectsForClass'])->name('book-list.subjects-for-class');
                 Route::resource('book-list', \App\Http\Controllers\School\Academic\BookListController::class)->only(['index', 'store', 'destroy']);
