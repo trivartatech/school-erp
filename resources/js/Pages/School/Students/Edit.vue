@@ -15,7 +15,7 @@ const form = useForm({
     // Student
     first_name: props.student.first_name || '',
     last_name: props.student.last_name || '',
-    dob: props.student.dob || '',
+    dob: props.student.dob ? props.student.dob.substring(0, 10) : '',
     birth_place: props.student.birth_place || '',
     mother_tongue: props.student.mother_tongue || '',
     gender: props.student.gender || 'Male',

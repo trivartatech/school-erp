@@ -26,6 +26,13 @@ const props = defineProps({
     academicYears:      { type: Array, default: () => [] },
 });
 
+// ── Date Formatting ───────────────────────────────────────────────────────────
+const formatDate = (dateString) => {
+    if (!dateString) return '—';
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+};
+
 // ── Active Tab ────────────────────────────────────────────────────────────────
 const activeTab = ref('basic');
 
@@ -254,7 +261,7 @@ const qrCodeUrl   = computed(() => {
                                 </div>
                                 <div class="info-field">
                                     <p class="info-label">Birth Date</p>
-                                    <span class="info-value">{{ student.dob || '—' }}</span>
+                                    <span class="info-value">{{ formatDate(student.dob) }}</span>
                                 </div>
                                 <div class="info-field">
                                     <p class="info-label">Gender</p>
