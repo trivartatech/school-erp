@@ -590,7 +590,12 @@ class NotificationService
         $publicPath = 'voice_cache/' . $randKey . '.wav';
         $disk->put($publicPath, $wavBytes);
 
-        $publicUrl = rtrim(config('app.url'), '/') . '/storage/' . $publicPath;
+        // Serve via /api/voice/wav/{encoded} Laravel route (NOT /storage/ direct).
+        // The /storage/ path isn't served as static files by nginx in this deploy —
+        // it passes through to Laravel which 404s. Our Laravel route serves the
+        // bytes with explicit Content-Type: audio/wav.
+        $encoded   = rtrim(strtr(base64_encode($publicPath), '+/', '-_'), '=');
+        $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/wav/' . $encoded;
         Log::info("🎵 [Audio] Ready [{$pathOrUrl}] → [{$publicUrl}] (" . strlen($wavBytes) . " bytes)");
 
         return $publicUrl;
