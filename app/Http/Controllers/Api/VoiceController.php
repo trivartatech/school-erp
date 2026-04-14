@@ -172,6 +172,33 @@ class VoiceController extends Controller
             ->header('Cache-Control', 'no-store');
     }
 
+    // ── Voice cache WAV — URL ends in literal .wav so Exotel plays it ────────
+    // Exotel TTS-speaks URLs without a recognisable audio extension.
+    // This route serves voice_cache/{filename}.wav directly.
+
+    public function cacheWav(string $filename)
+    {
+        $storagePath = 'voice_cache/' . $filename;
+        $disk        = Storage::disk('public');
+
+        Log::info('🎵 /api/voice/cache HIT', ['path' => $storagePath, 'ip' => request()->ip(), 'method' => request()->method()]);
+
+        if (!$disk->exists($storagePath)) {
+            Log::warning('🎵 /api/voice/cache NOT FOUND: ' . $storagePath);
+            return response('Not found.', 404);
+        }
+
+        $bytes = $disk->get($storagePath);
+
+        Log::info('🎵 /api/voice/cache serving ' . strlen($bytes) . ' bytes as audio/wav');
+
+        return response($bytes, 200)
+            ->header('Content-Type', 'audio/wav')
+            ->header('Content-Length', strlen($bytes))
+            ->header('Accept-Ranges', 'bytes')
+            ->header('Cache-Control', 'no-store');
+    }
+
     // ── WAV file from storage ─────────────────────────────────────────────────
 
     public function wav(string $encoded)

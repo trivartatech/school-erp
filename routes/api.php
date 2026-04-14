@@ -44,13 +44,18 @@ Route::any('/voice/direct', [\App\Http\Controllers\ExomlController::class, 'dire
 // Exotel Voice / Greeting Applet routes — handled by VoiceController
 // ─────────────────────────────────────────────────────────────────────────────
 
-Route::match(['get', 'head'], '/voice/intro',           [VoiceController::class, 'intro'])->name('api.voice.intro');
-Route::match(['get', 'head'], '/voice/play',            [VoiceController::class, 'play'])->name('api.voice.play');
-Route::match(['get', 'head'], '/voice/greeting',        [VoiceController::class, 'greeting'])->name('api.voice.greeting');
-Route::any(                   '/voice/passthru',        [VoiceController::class, 'passthru'])->name('api.voice.passthru');
-Route::get(                   '/voice/audio/{key}',     [VoiceController::class, 'audio'])->name('api.voice.audio');
-Route::match(['get', 'head'], '/voice/wav/{encoded}',   [VoiceController::class, 'wav'])->name('api.voice.wav');
-Route::any(                   '/voice/exoml',           [VoiceController::class, 'exoml'])->name('api.voice.exoml');
+Route::match(['get', 'head'], '/voice/intro',              [VoiceController::class, 'intro'])->name('api.voice.intro');
+Route::match(['get', 'head'], '/voice/play',               [VoiceController::class, 'play'])->name('api.voice.play');
+Route::match(['get', 'head'], '/voice/greeting',           [VoiceController::class, 'greeting'])->name('api.voice.greeting');
+Route::any(                   '/voice/passthru',           [VoiceController::class, 'passthru'])->name('api.voice.passthru');
+Route::get(                   '/voice/audio/{key}',        [VoiceController::class, 'audio'])->name('api.voice.audio');
+Route::match(['get', 'head'], '/voice/wav/{encoded}',      [VoiceController::class, 'wav'])->name('api.voice.wav');
+// URL ends in literal .wav so Exotel recognises it as an audio file
+// (Exotel TTS-speaks URLs without a recognisable audio extension).
+Route::match(['get', 'head'], '/voice/cache/{filename}',   [VoiceController::class, 'cacheWav'])
+    ->where('filename', '[A-Za-z0-9_-]+\.wav')
+    ->name('api.voice.cache');
+Route::any(                   '/voice/exoml',              [VoiceController::class, 'exoml'])->name('api.voice.exoml');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOBILE APP API — EduConnect Flutter App
@@ -197,4 +202,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->prefix('mobile')->group(function 
     // AI Insights (admin-only; delegates to AiInsightsController)
     Route::get('/ai/insights',  [$MA, 'aiInsights'])->name('api.mobile.ai.insights');
     Route::post('/ai/query',    [$MA, 'aiQuery'])->name('api.mobile.ai.query');
+
+    // Exam Marks Entry (teacher)
+    $EMC = \App\Http\Controllers\Api\Mobile\ExamMarkController::class;
+    Route::get('/exam-marks/schedules', [$EMC, 'schedules'])->name('api.mobile.exam-marks.schedules');
+    Route::get('/exam-marks/students',  [$EMC, 'students'])->name('api.mobile.exam-marks.students');
+    Route::post('/exam-marks/save',     [$EMC, 'save'])->name('api.mobile.exam-marks.save');
 });

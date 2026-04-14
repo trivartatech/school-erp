@@ -587,15 +587,14 @@ class NotificationService
         // Save with a UNIQUE random name per broadcast. Exotel caches audio files
         // by URL path — reusing a name would serve stale audio on subsequent calls.
         $randKey    = \Illuminate\Support\Str::random(16);
-        $publicPath = 'voice_cache/' . $randKey . '.wav';
+        $filename   = $randKey . '.wav';
+        $publicPath = 'voice_cache/' . $filename;
         $disk->put($publicPath, $wavBytes);
 
-        // Serve via /api/voice/wav/{encoded} Laravel route (NOT /storage/ direct).
-        // The /storage/ path isn't served as static files by nginx in this deploy —
-        // it passes through to Laravel which 404s. Our Laravel route serves the
-        // bytes with explicit Content-Type: audio/wav.
-        $encoded   = rtrim(strtr(base64_encode($publicPath), '+/', '-_'), '=');
-        $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/wav/' . $encoded;
+        // Serve via /api/voice/cache/{filename}.wav — URL ends in literal .wav
+        // so Exotel recognises it as an audio file. Without the .wav extension
+        // Exotel TTS-speaks the URL instead of fetching it.
+        $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/cache/' . $filename;
         Log::info("🎵 [Audio] Ready [{$pathOrUrl}] → [{$publicUrl}] (" . strlen($wavBytes) . " bytes)");
 
         return $publicUrl;
