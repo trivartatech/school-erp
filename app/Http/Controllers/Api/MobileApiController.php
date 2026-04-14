@@ -1012,6 +1012,30 @@ class MobileApiController extends Controller
             ->toArray();
     }
 
+    /**
+     * Convert an array of attachment storage paths into absolute public URLs.
+     * - Keeps already-absolute URLs (http/https) untouched.
+     * - Prepends `storage/` + host when paths are relative.
+     * - Tolerates arrays that are accidentally JSON-encoded strings.
+     */
+    private function absolutizeAttachments($attachments): array
+    {
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            $attachments = is_array($decoded) ? $decoded : [];
+        }
+        if (!is_array($attachments)) return [];
+
+        $out = [];
+        foreach ($attachments as $path) {
+            if (!is_string($path) || $path === '') continue;
+            $out[] = preg_match('#^https?://#i', $path)
+                ? $path
+                : url('storage/' . ltrim($path, '/'));
+        }
+        return $out;
+    }
+
     private function userData($user): array
     {
         return [
@@ -2114,7 +2138,7 @@ class MobileApiController extends Controller
             'teacher'          => $d->teacher?->user?->name ?? '',
             'type'             => $d->subject_id ? 'classwork' : 'notice',
             'content'          => $d->content,
-            'attachments'      => $d->attachments ?? [],
+            'attachments'      => $this->absolutizeAttachments($d->attachments ?? []),
             'completed'        => in_array($d->id, $completions),
             'completion_count' => $completionCounts[$d->id] ?? 0,
             'date'             => $d->date?->toDateString(),
@@ -2233,7 +2257,7 @@ class MobileApiController extends Controller
                 'max_marks'   => $a->max_marks,
                 'status'      => $status,
                 'marks'       => $sub?->marks,
-                'attachments' => $a->attachments ?? [],
+                'attachments' => $this->absolutizeAttachments($a->attachments ?? []),
             ];
         });
 
