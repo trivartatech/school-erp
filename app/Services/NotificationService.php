@@ -536,19 +536,18 @@ class NotificationService
     /**
      * Resolve a stored audio path into a public URL that Exotel can reliably fetch.
      *
-     * Exotel <Play> supports: MP3, WAV, OGG (Vorbis).
+     * Exotel requires .wav/.mp3, 8kHz, 16-bit, Mono.
      * Browser MediaRecorder outputs audio/webm (Opus) — NOT supported by Exotel.
      *
      * This method:
      *   1. Reads the file from disk
-     *   2. If WebM/Opus (browser recording), converts to WAV (8kHz mono) via FFmpeg
-     *   3. Saves the WAV to public storage under voice_cache/
-     *   4. Returns the direct /storage/voice_cache/{file}.wav URL
-     *      Exotel Greeting applet requires a direct file URL returned as plain text.
+     *   2. Converts to 8kHz mono PCM WAV via FFmpeg (any source format)
+     *   3. Saves to voice_cache/{random}.wav with a UNIQUE name per broadcast
+     *      (Exotel caches audio by URL name — unique names prevent stale playback)
+     *   4. Returns the direct /storage/voice_cache/{random}.wav URL
      *
-     * @param  string|null $pathOrUrl  Storage-relative path (e.g. "announcements/foo.webm")
-     *                                 or an already-resolved full URL
-     * @return string|null  Public URL for Exotel, or null if unresolvable
+     * @param  string|null $pathOrUrl  Storage-relative path or full URL
+     * @return string|null             Public URL for Exotel, or null if unresolvable
      */
     protected function resolveAudioUrl(?string $pathOrUrl): ?string
     {
@@ -577,36 +576,22 @@ class NotificationService
             return null;
         }
 
-        $mimeType = $disk->mimeType($pathOrUrl) ?: 'audio/mpeg';
-
-        $needsConversion = in_array($mimeType, ['audio/webm', 'audio/mp4', 'audio/aac', 'video/webm'])
-            || str_ends_with(strtolower($pathOrUrl), '.webm');
-
-        if (!$needsConversion) {
-            // Already WAV or MP3 — serve via /api/voice/wav/{encoded} which sets
-            // an explicit Content-Type header. Nginx may return application/octet-stream
-            // for static files which Exotel would silently skip.
-            $encoded   = rtrim(strtr(base64_encode($pathOrUrl), '+/', '-_'), '=');
-            $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/wav/' . $encoded;
-            Log::info("🎵 [Audio] WAV URL [{$pathOrUrl}] → [{$publicUrl}]");
-            return $publicUrl;
-        }
-
-        // WebM (browser recording) — convert to 8kHz WAV first, save to storage
         $absolutePath = $disk->path($pathOrUrl);
         $wavBytes     = $this->convertToWav($absolutePath);
 
         if ($wavBytes === null) {
-            Log::warning("⚠️ [Audio] FFmpeg unavailable — skipping WebM audio. Install ffmpeg on server.");
+            Log::warning("⚠️ [Audio] FFmpeg conversion failed for [{$pathOrUrl}] — audio will not play");
             return null;
         }
 
-        // Save converted WAV to storage so /api/voice/wav can serve it
-        $wavPath = preg_replace('/\.webm$/i', '.wav', $pathOrUrl);
-        $disk->put($wavPath, $wavBytes);
-        $encoded   = rtrim(strtr(base64_encode($wavPath), '+/', '-_'), '=');
-        $publicUrl = rtrim(config('app.url'), '/') . '/api/voice/wav/' . $encoded;
-        Log::info("🎵 [Audio] Converted WebM → WAV [{$pathOrUrl}] → [{$wavPath}] → [{$publicUrl}]");
+        // Save with a UNIQUE random name per broadcast. Exotel caches audio files
+        // by URL path — reusing a name would serve stale audio on subsequent calls.
+        $randKey    = \Illuminate\Support\Str::random(16);
+        $publicPath = 'voice_cache/' . $randKey . '.wav';
+        $disk->put($publicPath, $wavBytes);
+
+        $publicUrl = rtrim(config('app.url'), '/') . '/storage/' . $publicPath;
+        Log::info("🎵 [Audio] Ready [{$pathOrUrl}] → [{$publicUrl}] (" . strlen($wavBytes) . " bytes)");
 
         return $publicUrl;
     }
@@ -789,6 +774,14 @@ class NotificationService
             'CallType'       => 'trans',
             'StatusCallback' => $baseUrl . '/api/voice/status',
         ];
+
+        // If announcement has recorded audio, use StartPlaybackValueNew —
+        // Exotel plays this audio to the callee when the call connects.
+        // This is what actually makes recorded voice play (not the Greeting chain).
+        if (!empty($announcementAudio)) {
+            $payload['StartPlaybackValueNew'] = $announcementAudio;
+            $payload['StartPlaybackToNew']    = 'Callee';
+        }
 
         Log::info("🚀 [Voice Payload]", $payload);
 
