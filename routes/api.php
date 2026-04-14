@@ -292,35 +292,39 @@ Route::any('/voice/exoml', function () {
     $audioUrls = $data['a'] ?? [];
     $ttsText   = $data['s'] ?? '';
 
-    $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n<Response>\n";
+    // Minimal ExoML — no XML declaration, no Hangup (Exotel auto-hangs up at end).
+    // Exotel may reject responses with <?xml ?> prefix or self-closing Hangup tag.
+    $xml = '<Response>';
 
     $hasContent = false;
 
     if (!empty($introUrl)) {
-        $xml .= '  <Play>' . htmlspecialchars($introUrl, ENT_XML1, 'UTF-8') . '</Play>' . "\n";
+        $xml .= '<Play>' . htmlspecialchars($introUrl, ENT_XML1, 'UTF-8') . '</Play>';
         $hasContent = true;
     }
     foreach ($audioUrls as $url) {
         if (!empty($url)) {
-            $xml .= '  <Play>' . htmlspecialchars($url, ENT_XML1, 'UTF-8') . '</Play>' . "\n";
+            $xml .= '<Play>' . htmlspecialchars($url, ENT_XML1, 'UTF-8') . '</Play>';
             $hasContent = true;
         }
     }
     if (!empty($ttsText)) {
-        $xml .= '  <Say>' . htmlspecialchars($ttsText, ENT_XML1, 'UTF-8') . '</Say>' . "\n";
+        $xml .= '<Say>' . htmlspecialchars($ttsText, ENT_XML1, 'UTF-8') . '</Say>';
         $hasContent = true;
     }
 
     // Always include at least a Say so Exotel never rejects the call
     if (!$hasContent) {
-        $xml .= '  <Say>Hello, this is an automated call.</Say>' . "\n";
+        $xml .= '<Say>Hello, this is an automated announcement from your school.</Say>';
     }
 
-    $xml .= '  <Hangup/>' . "\n</Response>";
+    $xml .= '</Response>';
 
-    Log::info('🎬 ExoML response', ['xml' => $xml]);
+    Log::info('🎬 ExoML response', ['xml' => $xml, 'length' => strlen($xml)]);
 
-    return response($xml, 200)->header('Content-Type', 'application/xml');
+    return response($xml, 200)
+        ->header('Content-Type', 'text/xml')
+        ->header('Cache-Control', 'no-store');
 })->name('api.voice.exoml');
 
 // ─────────────────────────────────────────────────────────────────────────────
