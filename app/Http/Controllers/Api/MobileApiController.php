@@ -235,7 +235,7 @@ class MobileApiController extends Controller
             'title'                  => $d->title,
             'is_original_submitted'  => (bool) $d->is_original_submitted,
             'original_file_location' => $d->original_file_location,
-            'file_url'               => $d->file_path ? url('storage/' . $d->file_path) : null,
+            'file_url'               => $this->publicFileUrl($d->file_path),
         ])->values();
 
         // Transport
@@ -702,9 +702,7 @@ class MobileApiController extends Controller
                 'audience_ids'    => $a->audience_ids,
                 'template_name'   => $a->template?->name,
                 'has_audio'       => !empty($a->audio_path) || !empty($a->mp3_path),
-                'audio_url'       => $a->mp3_path
-                    ? url('storage/' . $a->mp3_path)
-                    : ($a->audio_path ? url('storage/' . $a->audio_path) : null),
+                'audio_url'       => $this->publicFileUrl($a->mp3_path ?: $a->audio_path),
                 'is_broadcasted'  => $a->is_broadcasted,
                 'status'          => $status,
                 'broadcast_error' => $a->broadcast_error ? ($a->broadcast_error['message'] ?? 'Unknown error') : null,
@@ -1013,9 +1011,22 @@ class MobileApiController extends Controller
     }
 
     /**
+     * Build a public URL for a file in storage/app/public.
+     * Always routed through the /api/files proxy so the response doesn't
+     * depend on nginx being able to read the /storage symlink.
+     */
+    private function publicFileUrl(?string $path): ?string
+    {
+        if (!$path || !is_string($path)) return null;
+        if (preg_match('#^https?://#i', $path)) return $path;
+        return url('api/files/' . ltrim($path, '/'));
+    }
+
+    /**
      * Convert an array of attachment storage paths into absolute public URLs.
      * - Keeps already-absolute URLs (http/https) untouched.
-     * - Prepends `storage/` + host when paths are relative.
+     * - Routes relative paths through /api/files/ (Laravel-served) so mobile
+     *   clients don't depend on the /storage nginx symlink being readable.
      * - Tolerates arrays that are accidentally JSON-encoded strings.
      */
     private function absolutizeAttachments($attachments): array
@@ -1031,9 +1042,50 @@ class MobileApiController extends Controller
             if (!is_string($path) || $path === '') continue;
             $out[] = preg_match('#^https?://#i', $path)
                 ? $path
-                : url('storage/' . ltrim($path, '/'));
+                : url('api/files/' . ltrim($path, '/'));
         }
         return $out;
+    }
+
+    /**
+     * GET /api/files/{path}
+     * Streams a file from storage/app/public through Laravel so we don't
+     * depend on nginx being able to follow the /storage symlink.
+     * Public because filenames are random hashes; still guards against
+     * path traversal and symlink escape.
+     */
+    public function serveFile(Request $request, string $path)
+    {
+        // Strip any leading slash, URL-decode once
+        $path = ltrim(rawurldecode($path), '/');
+
+        // Block path traversal + absolute paths + windows-style drives
+        if ($path === '' || str_contains($path, '..') || str_starts_with($path, '/') || preg_match('#^[a-zA-Z]:#', $path)) {
+            abort(403);
+        }
+
+        $base     = realpath(storage_path('app/public'));
+        $fullPath = realpath($base . DIRECTORY_SEPARATOR . $path);
+
+        // Reject if realpath resolved outside the public storage root
+        if ($base === false || $fullPath === false || !str_starts_with($fullPath, $base)) {
+            abort(404);
+        }
+
+        if (!is_file($fullPath) || !is_readable($fullPath)) {
+            abort(404);
+        }
+
+        // Detect MIME from the file itself (hash-named files have no extension)
+        $mime = function_exists('mime_content_type')
+            ? (mime_content_type($fullPath) ?: 'application/octet-stream')
+            : 'application/octet-stream';
+
+        return response()->file($fullPath, [
+            'Content-Type'   => $mime,
+            'Cache-Control'  => 'public, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     private function userData($user): array
@@ -1054,7 +1106,7 @@ class MobileApiController extends Controller
         return [
             'id'       => $school->id,
             'name'     => $school->name,
-            'logo'     => $school->logo ? asset('storage/' . $school->logo) : null,
+            'logo'     => $this->publicFileUrl($school->logo),
             'currency' => $school->currency ?? '₹',
             'features' => $school->features ?? [],
             'settings' => collect($school->settings ?? [])->only([
@@ -2577,7 +2629,7 @@ class MobileApiController extends Controller
             'teacher'      => $r->teacher?->user?->name ?? '',
             'type'         => strtolower($r->type ?? 'pdf'),
             'chapter_name' => $r->chapter_name,
-            'file_url'     => $r->file_path ? asset('storage/' . $r->file_path) : null,
+            'file_url'     => $this->publicFileUrl($r->file_path),
             'external_url' => $r->external_url,
             'created_at'   => $r->created_at?->toIso8601String(),
         ]);
@@ -2635,7 +2687,7 @@ class MobileApiController extends Controller
                 'address'       => $student->address ?? $parent?->address ?? '',
                 'school' => [
                     'name'    => $school->name,
-                    'logo'    => $school->logo ? asset('storage/' . $school->logo) : null,
+                    'logo'    => $this->publicFileUrl($school->logo),
                     'address' => $school->settings['address_line1'] ?? '',
                     'phone'   => $school->settings['phone'] ?? '',
                 ],
@@ -2738,7 +2790,7 @@ class MobileApiController extends Controller
                 'phone'    => $school->phone ?? '',
                 'email'    => $school->email ?? '',
                 'currency' => $school->currency ?? '₹',
-                'logo_url' => $school->logo ? asset('storage/' . $school->logo) : null,
+                'logo_url' => $this->publicFileUrl($school->logo),
             ],
             'payment' => [
                 'id'              => $payment->id,

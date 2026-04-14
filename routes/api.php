@@ -13,6 +13,14 @@ Route::get('/public/school-config', [\App\Http\Controllers\Api\PublicApiControll
 Route::get('/public/discover', [\App\Http\Controllers\Api\PublicApiController::class, 'discover'])
     ->name('api.public.discover');
 
+// ── Public file proxy — serves files from storage/app/public through Laravel
+// so mobile clients don't depend on the /storage symlink being readable by nginx.
+// Filenames are random 40-char hashes so this is effectively unguessable; we still
+// block path traversal and reject anything outside storage/app/public.
+Route::get('/files/{path}', [\App\Http\Controllers\Api\MobileApiController::class, 'serveFile'])
+    ->where('path', '.*')
+    ->name('api.mobile.file');
+
 // ── Chat API (token or session auth) ─────────────────────────────────────────
 Route::middleware(['auth:sanctum', 'tenant'])->prefix('v1')->name('api.v1.')->group(function () {
     $CA = \App\Http\Controllers\Api\ChatApiController::class;
