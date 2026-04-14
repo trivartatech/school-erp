@@ -50,7 +50,7 @@ class MobileApiController extends Controller
         $school  = app('current_school');
         $yearId  = app()->bound('current_academic_year_id') ? app('current_academic_year_id') : null;
 
-        return response()->json([
+        $payload = [
             'user'          => $this->userData($user),
             'school'        => $this->schoolData($school),
             'stats'         => $this->stats($user, $yearId, $request),
@@ -58,7 +58,14 @@ class MobileApiController extends Controller
             'attendance'    => $this->attendanceSummary($user, $yearId, $request),
             // Parents get the full child list for the switcher
             'children'      => $user->isParent() ? $this->childList($user) : null,
-        ]);
+        ];
+
+        // Admin-only rich dashboard: trends, breakdowns, top-level financials
+        if ($user->isAdmin()) {
+            $payload['admin'] = $this->adminDashboardData($school->id, $yearId);
+        }
+
+        return response()->json($payload);
     }
 
     // ── Admin: Student & Teacher Lists ────────────────────────────────────────
@@ -1065,12 +1072,119 @@ class MobileApiController extends Controller
             ];
         }
 
+        // Admin stats — rich KPI payload
+        $totalStudents = Student::where('school_id', $school->id)->count();
+        $totalStaff    = \App\Models\Staff::where('school_id', $school->id)->count();
+
+        $feeToday = (float) FeePayment::where('school_id', $school->id)
+            ->whereDate('payment_date', today())
+            ->where('status', '!=', 'cancelled')
+            ->sum('amount_paid');
+
+        $feeMonth = (float) FeePayment::where('school_id', $school->id)
+            ->whereBetween('payment_date', [now()->startOfMonth(), now()->endOfMonth()])
+            ->where('status', '!=', 'cancelled')
+            ->sum('amount_paid');
+
+        $feeYearQ = FeePayment::where('school_id', $school->id)
+            ->where('status', '!=', 'cancelled');
+        if ($yearId) $feeYearQ->where('academic_year_id', $yearId);
+        $feeYear = (float) $feeYearQ->sum('amount_paid');
+
+        $feePendingQ = FeePayment::where('school_id', $school->id)
+            ->where('status', '!=', 'cancelled')
+            ->where('balance', '>', 0);
+        if ($yearId) $feePendingQ->where('academic_year_id', $yearId);
+        $feePending = (float) $feePendingQ->sum('balance');
+
+        // Today's attendance — across the whole school
+        $attTodayQ = Attendance::where('school_id', $school->id)
+            ->whereDate('date', today());
+        if ($yearId) $attTodayQ->where('academic_year_id', $yearId);
+        $attTodayRecords = (clone $attTodayQ)->get(['status']);
+        $attTodayTotal   = $attTodayRecords->count();
+        $attTodayPresent = $attTodayRecords->whereIn('status', ['present', 'late'])->count();
+        $attTodayAbsent  = $attTodayRecords->where('status', 'absent')->count();
+        $attTodayPct     = $attTodayTotal > 0 ? round($attTodayPresent / $attTodayTotal * 100) : 0;
+
         return [
-            'total_students'      => Student::where('school_id', $school->id)->count(),
-            'total_staff'         => \App\Models\Staff::where('school_id', $school->id)->count(),
-            'fee_collected_today' => FeePayment::where('school_id', $school->id)
-                ->whereDate('payment_date', today())->sum('amount_paid'),
-            'today_attendance_pct' => 0,
+            'total_students'       => $totalStudents,
+            'total_staff'          => $totalStaff,
+            'fee_collected_today'  => $feeToday,
+            'fee_collected_month'  => $feeMonth,
+            'fee_collected_year'   => $feeYear,
+            'fee_pending_total'    => $feePending,
+            'today_attendance_pct' => $attTodayPct,
+            'today_present'        => $attTodayPresent,
+            'today_absent'         => $attTodayAbsent,
+            'today_marked'         => $attTodayTotal,
+            'today_unmarked'       => max(0, $totalStudents - $attTodayTotal),
+        ];
+    }
+
+    /**
+     * Rich admin dashboard payload — gender ratio, 7-day attendance trend,
+     * 6-month fee collection trend, class/section counts.
+     */
+    private function adminDashboardData(int $schoolId, ?int $yearId): array
+    {
+        // Gender breakdown
+        $gender = Student::where('school_id', $schoolId)
+            ->selectRaw('LOWER(COALESCE(gender, "")) as g, COUNT(*) as c')
+            ->groupBy('g')
+            ->pluck('c', 'g');
+        $boys      = (int) ($gender['male']   ?? 0);
+        $girls     = (int) ($gender['female'] ?? 0);
+        $totalStud = (int) Student::where('school_id', $schoolId)->count();
+        $other     = max(0, $totalStud - $boys - $girls);
+
+        // Class + section counts
+        $totalClasses  = \App\Models\CourseClass::where('school_id', $schoolId)->count();
+        $totalSections = \App\Models\Section::where('school_id', $schoolId)->count();
+
+        // 7-day attendance trend (today going back 6 days)
+        $attTrend = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $day   = now()->subDays($i);
+            $dayQ  = Attendance::where('school_id', $schoolId)->whereDate('date', $day);
+            if ($yearId) $dayQ->where('academic_year_id', $yearId);
+            $recs  = (clone $dayQ)->get(['status']);
+            $tot   = $recs->count();
+            $pres  = $recs->whereIn('status', ['present', 'late'])->count();
+            $attTrend[] = [
+                'label' => $day->format('D'),
+                'date'  => $day->toDateString(),
+                'pct'   => $tot > 0 ? round($pres / $tot * 100) : 0,
+                'total' => $tot,
+            ];
+        }
+
+        // 6-month fee collection trend (current month back 5)
+        $feeTrend = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $start = now()->subMonths($i)->startOfMonth();
+            $end   = now()->subMonths($i)->endOfMonth();
+            $sum   = (float) FeePayment::where('school_id', $schoolId)
+                ->where('status', '!=', 'cancelled')
+                ->whereBetween('payment_date', [$start, $end])
+                ->sum('amount_paid');
+            $feeTrend[] = [
+                'label'  => $start->format('M'),
+                'month'  => $start->format('Y-m'),
+                'amount' => $sum,
+            ];
+        }
+
+        return [
+            'gender' => [
+                'boys'  => $boys,
+                'girls' => $girls,
+                'other' => max(0, $other),
+            ],
+            'total_classes'     => $totalClasses,
+            'total_sections'    => $totalSections,
+            'attendance_trend'  => $attTrend,
+            'fee_trend'         => $feeTrend,
         ];
     }
 
