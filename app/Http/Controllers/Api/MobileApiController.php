@@ -172,9 +172,12 @@ class MobileApiController extends Controller
             ->orderByDesc('created_at')
             ->get()
             ->map(function ($p) {
-                $mode = $p->payment_mode instanceof \App\Enums\PaymentMode
+                $mode = $p->payment_mode instanceof \BackedEnum
                     ? $p->payment_mode->value
                     : $p->payment_mode;
+                $status = $p->status instanceof \BackedEnum
+                    ? $p->status->value
+                    : $p->status;
                 return [
                     'id'           => $p->id,
                     'receipt_no'   => $p->receipt_no,
@@ -184,7 +187,7 @@ class MobileApiController extends Controller
                     'balance'      => (float) ($p->balance ?? 0),
                     'payment_date' => $p->payment_date?->toDateString(),
                     'payment_mode' => $mode,
-                    'status'       => strtolower($p->status ?? 'pending'),
+                    'status'       => strtolower((string) ($status ?? 'pending')),
                     'has_receipt'  => !empty($p->receipt_no),
                 ];
             });
@@ -2526,9 +2529,12 @@ class MobileApiController extends Controller
             ->paginate(20, ['*'], 'page', $page);
 
         $data = collect($payments->items())->map(function ($p) {
-            $mode = $p->payment_mode instanceof \App\Enums\PaymentMode
+            $mode = $p->payment_mode instanceof \BackedEnum
                 ? $p->payment_mode->value
                 : $p->payment_mode;
+            $status = $p->status instanceof \BackedEnum
+                ? $p->status->value
+                : $p->status;
 
             return [
                 'id'              => $p->id,
@@ -2540,7 +2546,7 @@ class MobileApiController extends Controller
                 'balance'         => (float) ($p->balance ?? 0),
                 'payment_date'    => $p->payment_date?->toDateString(),
                 'payment_mode'    => $mode,
-                'status'          => strtolower($p->status ?? 'pending'),
+                'status'          => strtolower((string) ($status ?? 'pending')),
                 'transaction_id'  => $p->transaction_ref ?: $p->receipt_no,
                 'transaction_ref' => $p->transaction_ref,
                 'created_at'      => $p->created_at?->toIso8601String(),
