@@ -3432,9 +3432,10 @@ class MobileApiController extends Controller
 
         $summary = $this->feeService->getStudentFeeSummary($student, $yearId, $school->id);
 
-        // Only show heads that still have a balance or are partial/unpaid
+        // Only show heads that still have an outstanding balance (status != paid)
+        // FeeService statuses: 'paid' | 'partial' | 'unpaid'
         $collectable = collect($summary['fee_heads'] ?? [])
-            ->filter(fn($h) => (float) ($h['balance'] ?? 0) > 0 || in_array($h['status'] ?? '', ['partial', 'unpaid', 'due']))
+            ->filter(fn($h) => (float) ($h['balance'] ?? 0) > 0)
             ->values()
             ->all();
 
