@@ -200,6 +200,8 @@ Route::middleware('auth')->group(function () {
             Route::get('students/scanner', [\App\Http\Controllers\School\StudentController::class, 'qrProfileScanner'])->name('students.scanner');
             Route::post('students/scan-by-uuid', [\App\Http\Controllers\School\StudentController::class, 'scanByUuid'])->name('students.scan-by-uuid');
             Route::get('students/export-qr', [\App\Http\Controllers\School\StudentController::class, 'exportQRCodes'])->name('students.export-qr');
+            Route::get('students/id-cards', [\App\Http\Controllers\School\IdCardController::class, 'index'])->name('students.id-cards');
+            Route::get('students/id-cards/print', [\App\Http\Controllers\School\IdCardController::class, 'print'])->name('students.id-cards.print');
             Route::get('students/bulk-photo', [\App\Http\Controllers\School\StudentController::class, 'bulkPhotoUploadForm'])->name('students.bulk-photo');
             Route::post('students/bulk-photo', [\App\Http\Controllers\School\StudentController::class, 'processBulkPhotoUpload'])->name('students.bulk-photo.store');
             Route::get('students/{student}/request-edit', [\App\Http\Controllers\School\StudentController::class, 'createRequest'])->name('students.request-edit');
