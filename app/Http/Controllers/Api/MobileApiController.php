@@ -201,31 +201,84 @@ class MobileApiController extends Controller
 
         $parent = $student->studentParent;
 
-        // Exam marks — grouped by exam type
+        // Exam marks — aggregated per subject per exam schedule (mirrors the
+        // web StudentController::show() logic so the mobile Exams tab shows
+        // one row per subject with summed marks, percentage, and grade —
+        // not one row per raw assessment item).
         $examMarks = [];
         if ($yearId) {
             $marks = \App\Models\ExamMark::where('student_id', $id)
                 ->where('academic_year_id', $yearId)
                 ->with([
-                    'examScheduleSubject.examSchedule.examType:id,name,code',
-                    'examScheduleSubject.subject:id,name',
+                    'examScheduleSubject.examSchedule.examType',
+                    'examScheduleSubject.subject',
+                    'examScheduleSubject.markConfigs',
+                    'examScheduleSubject.gradingSystem.grades',
+                    'examScheduleSubject.examSchedule.scholasticGradingSystem.grades',
+                    'assessmentItem',
                 ])
                 ->get();
 
-            $grouped = [];
-            foreach ($marks as $mark) {
-                $ess      = $mark->examScheduleSubject;
-                $examName = $ess?->examSchedule?->examType?->name ?? 'Exam';
-                $grouped[$examName][] = [
-                    'subject'         => $ess?->subject?->name ?? '—',
-                    'marks_obtained'  => $mark->marks_obtained,
-                    'max_marks'       => $ess?->max_marks ?? null,
-                    'is_absent'       => (bool) $mark->is_absent,
-                    'teacher_remarks' => $mark->teacher_remarks,
+            // Default fallback grading system (Scholastic) for this school
+            $defaultGrades = \App\Models\GradingSystem::with('grades')
+                ->where('school_id', $school->id)
+                ->where('type', 'scholastic')
+                ->first()
+                ?->grades ?? collect();
+
+            $groupedBySchedule = $marks->groupBy(fn($m) => $m->examScheduleSubject->exam_schedule_id);
+
+            foreach ($groupedBySchedule as $scheduleId => $markItems) {
+                $schedule = $markItems->first()?->examScheduleSubject?->examSchedule;
+                $examName = $schedule?->examType?->name ?? 'Examination';
+
+                $subjectMarks = $markItems->groupBy('examScheduleSubject.subject_id');
+                $subjects = [];
+
+                foreach ($subjectMarks as $subjectId => $items) {
+                    $ss          = $items->first()?->examScheduleSubject;
+                    $subjectName = $ss?->subject?->name ?? 'Unknown';
+
+                    $totalObtained = 0;
+                    $totalMax      = 0;
+                    $isAbsent      = false;
+
+                    foreach ($items as $item) {
+                        if ($item->is_absent) {
+                            $isAbsent = true;
+                        }
+                        $totalObtained += (float) $item->marks_obtained;
+
+                        // Max marks live on the per-item mark config, not on the parent
+                        $config = $ss?->markConfigs?->firstWhere('exam_assessment_item_id', $item->exam_assessment_item_id);
+                        $totalMax += (float) ($config->max_marks ?? 0);
+                    }
+
+                    $percentage = $totalMax > 0 ? ($totalObtained / $totalMax) * 100 : 0;
+
+                    // Grading hierarchy: Subject-specific -> Schedule Scholastic -> School Scholastic
+                    $grades = $ss?->gradingSystem?->grades
+                        ?? $schedule?->scholasticGradingSystem?->grades
+                        ?? $defaultGrades;
+
+                    $matchedGrade = $grades->sortByDesc('min_percentage')
+                        ->first(fn($g) => (float) $percentage >= (float) $g->min_percentage);
+
+                    $subjects[] = [
+                        'name'       => $subjectName,
+                        'obtained'   => $totalObtained,
+                        'max'        => $totalMax,
+                        'percentage' => round($percentage, 2),
+                        'grade'      => $isAbsent ? 'ABS' : ($matchedGrade->name ?? '—'),
+                        'is_absent'  => $isAbsent,
+                    ];
+                }
+
+                $examMarks[] = [
+                    'id'        => $scheduleId,
+                    'exam_name' => $examName,
+                    'subjects'  => $subjects,
                 ];
-            }
-            foreach ($grouped as $examName => $subjects) {
-                $examMarks[] = ['exam_name' => $examName, 'subjects' => $subjects];
             }
         }
 
