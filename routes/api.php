@@ -15,10 +15,12 @@ Route::get('/public/discover', [\App\Http\Controllers\Api\PublicApiController::c
 
 // ── Public file proxy — serves files from storage/app/public through Laravel
 // so mobile clients don't depend on the /storage symlink being readable by nginx.
-// Filenames are random 40-char hashes so this is effectively unguessable; we still
-// block path traversal and reject anything outside storage/app/public.
-Route::get('/files/{path}', [\App\Http\Controllers\Api\MobileApiController::class, 'serveFile'])
-    ->where('path', '.*')
+// The actual path lives in the ?p= query string so nginx's image-extension
+// regex (which matches /*.jpg, /*.png etc and returns 404 before PHP is
+// reached) doesn't intercept the request. Filenames are random 40-char
+// hashes so the URL is effectively unguessable; we still block path
+// traversal and reject anything outside storage/app/public.
+Route::get('/media', [\App\Http\Controllers\Api\MobileApiController::class, 'serveFile'])
     ->name('api.mobile.file');
 
 // ── Chat API (token or session auth) ─────────────────────────────────────────

@@ -1028,20 +1028,23 @@ class MobileApiController extends Controller
 
     /**
      * Build a public URL for a file in storage/app/public.
-     * Always routed through the /api/files proxy so the response doesn't
-     * depend on nginx being able to read the /storage symlink.
+     *
+     * Routed through /api/media?p=<path>. The path lives in the query
+     * string (not the URL path) so nginx's image-extension location
+     * regex can't intercept it before the request reaches Laravel.
      */
     private function publicFileUrl(?string $path): ?string
     {
         if (!$path || !is_string($path)) return null;
         if (preg_match('#^https?://#i', $path)) return $path;
-        return url('api/files/' . $this->normalizeStoragePath($path));
+        $clean = $this->normalizeStoragePath($path);
+        return url('api/media') . '?p=' . rawurlencode($clean);
     }
 
     /**
      * Convert an array of attachment storage paths into absolute public URLs.
      * - Keeps already-absolute URLs (http/https) untouched.
-     * - Routes relative paths through /api/files/ (Laravel-served) so mobile
+     * - Routes relative paths through /api/media?p= (Laravel-served) so mobile
      *   clients don't depend on the /storage nginx symlink being readable.
      * - Tolerates arrays that are accidentally JSON-encoded strings.
      */
@@ -1056,25 +1059,29 @@ class MobileApiController extends Controller
         $out = [];
         foreach ($attachments as $path) {
             if (!is_string($path) || $path === '') continue;
-            $out[] = preg_match('#^https?://#i', $path)
-                ? $path
-                : url('api/files/' . $this->normalizeStoragePath($path));
+            if (preg_match('#^https?://#i', $path)) {
+                $out[] = $path;
+            } else {
+                $clean = $this->normalizeStoragePath($path);
+                $out[] = url('api/media') . '?p=' . rawurlencode($clean);
+            }
         }
         return $out;
     }
 
     /**
-     * GET /api/files/{path}
+     * GET /api/media?p=<relative-path>
      * Streams a file from storage/app/public through Laravel so we don't
-     * depend on nginx being able to follow the /storage symlink.
+     * depend on nginx being able to follow the /storage symlink, and so
+     * nginx's image-extension location regex can't intercept the URL.
      * Public because filenames are random hashes; still guards against
      * path traversal and symlink escape.
      */
-    public function serveFile(Request $request, string $path)
+    public function serveFile(Request $request)
     {
-        // URL-decode once, strip leading slash, then remove any lingering
-        // storage/ or public/ prefix that older upload code may have saved.
-        $path = $this->normalizeStoragePath(rawurldecode($path));
+        // Laravel has already URL-decoded query params; strip any historical
+        // storage/ or public/ prefix.
+        $path = $this->normalizeStoragePath((string) $request->query('p', ''));
 
         // Block path traversal + absolute paths + windows-style drives
         if ($path === '' || str_contains($path, '..') || str_starts_with($path, '/') || preg_match('#^[a-zA-Z]:#', $path)) {
