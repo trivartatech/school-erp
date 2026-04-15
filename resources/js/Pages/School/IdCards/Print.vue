@@ -44,7 +44,7 @@ const t = computed(() => props.template);
         </div>
         <div class="toolbar-right">
             <button @click="window.print()" class="btn-print">🖨 Print</button>
-            <Link href="/school/students/id-cards" class="btn-back">← Back to Designer</Link>
+            <Link href="/school/utility/id-cards" class="btn-back">← Back to Designer</Link>
         </div>
     </div>
 
@@ -53,7 +53,7 @@ const t = computed(() => props.template);
         <div class="empty-icon">🪪</div>
         <h2>No students found</h2>
         <p>Try adjusting the class or section filter.</p>
-        <Link href="/school/students/id-cards" class="btn-back-link">← Back to Designer</Link>
+        <Link href="/school/utility/id-cards" class="btn-back-link">← Back to Designer</Link>
     </div>
 
     <!-- Cards grid -->

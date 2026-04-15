@@ -72,7 +72,7 @@ const printUrl = computed(() => {
     params.set('show_blood',     showBlood.value);
     params.set('show_parent',    showParent.value);
     params.set('show_address',   showAddress.value);
-    return `/school/students/id-cards/print?${params.toString()}`;
+    return `/school/utility/id-cards/print?${params.toString()}`;
 });
 
 const goToPrint = () => {

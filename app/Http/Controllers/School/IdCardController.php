@@ -25,7 +25,7 @@ class IdCardController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        return Inertia::render('School/Students/IdCards/Index', [
+        return Inertia::render('School/IdCards/Index', [
             'school'         => [
                 'name'    => $school->name,
                 'logo'    => $school->logo ? '/storage/' . $school->logo : null,
@@ -136,7 +136,7 @@ class IdCardController extends Controller
             'show_address'   => filter_var($request->input('show_address', false), FILTER_VALIDATE_BOOLEAN),
         ];
 
-        return Inertia::render('School/Students/IdCards/Print', [
+        return Inertia::render('School/IdCards/Print', [
             'students' => $students,
             'school'   => [
                 'name'    => $school->name,
