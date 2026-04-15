@@ -1,6 +1,7 @@
 <script setup>
 import Button from '@/Components/ui/Button.vue';
-import { ref, computed } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
+import QRCode from 'qrcode';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import SchoolLayout from '@/Layouts/SchoolLayout.vue';
 import { useDelete } from '@/Composables/useDelete';
@@ -140,10 +141,31 @@ const deleteDocument = (docId) => del(`/school/students/${props.student.id}/docu
 
 // ── ID Card Modal ─────────────────────────────────────────────────────────────
 const showIdModal = ref(false);
-const qrCodeUrl   = computed(() => {
-    const url = encodeURIComponent(`${window.location.origin}/q/${props.student.uuid}`);
-    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${url}`;
-});
+const qrCanvas    = ref(null);
+
+const studentQrTarget = computed(() =>
+    props.student.uuid ? `${window.location.origin}/q/${props.student.uuid}` : null
+);
+
+async function renderIdQr() {
+    await nextTick();
+    if (!qrCanvas.value || !studentQrTarget.value) return;
+    await QRCode.toCanvas(qrCanvas.value, studentQrTarget.value, {
+        width:  200,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+    });
+}
+
+function downloadIdQr() {
+    if (!qrCanvas.value) return;
+    const link = document.createElement('a');
+    link.download = `${props.student.admission_no || 'student'}-qr.png`;
+    link.href = qrCanvas.value.toDataURL('image/png');
+    link.click();
+}
+
+watch(showIdModal, (open) => { if (open) renderIdQr(); });
 </script>
 
 <template>
@@ -1096,11 +1118,12 @@ const qrCodeUrl   = computed(() => {
                         <h4 class="id-card-name">{{ student.first_name }} {{ student.last_name }}</h4>
                         <p class="id-card-adm">{{ student.admission_no }}</p>
                         <div class="id-card-qr-wrap">
-                            <img :src="qrCodeUrl" alt="Student QR Code" class="id-card-qr" />
+                            <canvas v-if="studentQrTarget" ref="qrCanvas" class="id-card-qr" />
+                            <p v-else class="id-card-qr-hint" style="color:#ef4444">No QR (missing UUID)</p>
                         </div>
                         <p class="id-card-qr-hint">Scan for Profile / Attendance</p>
-                        <Button variant="secondary" as="a" :href="qrCodeUrl" download="student-qr.png" target="_blank" block class="mt-2">
-                            ⬇️ Download QR
+                        <Button variant="secondary" block class="mt-2" @click="downloadIdQr" :disabled="!studentQrTarget">
+                            Download QR
                         </Button>
                     </div>
                 </div>

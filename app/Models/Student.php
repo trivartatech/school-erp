@@ -24,11 +24,13 @@ class Student extends Model
 
     protected static function booted()
     {
-        static::creating(function ($student) {
+        static::saving(function ($student) {
             if (empty($student->uuid)) {
                 $student->uuid = (string) \Illuminate\Support\Str::uuid();
             }
+        });
 
+        static::creating(function ($student) {
             // Auto-generate ERP number if not already set
             if (empty($student->erp_no) && $student->school_id) {
                 $student->erp_no = static::generateErpNo($student->school_id);
