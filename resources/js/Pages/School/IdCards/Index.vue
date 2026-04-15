@@ -1,484 +1,567 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { Head } from '@inertiajs/vue3';
 import SchoolLayout from '@/Layouts/SchoolLayout.vue';
 import Button from '@/Components/ui/Button.vue';
 import { useClassSections } from '@/Composables/useClassSections';
 
 const props = defineProps({
-    school:         { type: Object, required: true },
-    classes:        { type: Array,  required: true },
-    academicYearId: { type: Number, default: null },
-    filters:        { type: Object, default: () => ({}) },
+    school:  { type: Object, required: true },
+    classes: { type: Array,  required: true },
+    filters: { type: Object, default: () => ({}) },
 });
 
-// ── Filters ──────────────────────────────────────────────────────────────────
+// ── Filters ──────────────────────────────────────────────────────
 const selectedClass   = ref(props.filters.class_id   ?? '');
 const selectedSection = ref(props.filters.section_id ?? '');
-
 const { sections, fetchSections } = useClassSections();
 if (selectedClass.value) fetchSections(selectedClass.value);
+watch(selectedClass, val => { selectedSection.value = ''; fetchSections(val); });
 
-watch(selectedClass, (val) => {
-    selectedSection.value = '';
-    fetchSections(val);
+// ── Card canvas size for editing (CR80 ratio: 85.6 / 54 = 1.585) ──
+const CANVAS_W = 514;
+const CANVAS_H = 324;
+
+// ── Available field definitions ───────────────────────────────────
+const FIELDS = [
+    { type: 'photo',  label: 'Photo',            icon: '👤', defaultW: 22, defaultH: 60 },
+    { type: 'qr',     label: 'QR Code',           icon: '▦',  defaultW: 20, defaultH: 55 },
+    { type: 'field',  field: 'school_name',        label: 'School Name',      icon: '🏫', defaultW: 70 },
+    { type: 'field',  field: 'name',               label: 'Full Name',        icon: '👤', defaultW: 55 },
+    { type: 'field',  field: 'class_section',      label: 'Class & Section',  icon: '🎓', defaultW: 45 },
+    { type: 'field',  field: 'class',              label: 'Class',            icon: '🎓', defaultW: 28 },
+    { type: 'field',  field: 'section',            label: 'Section',          icon: '🔤', defaultW: 22 },
+    { type: 'field',  field: 'roll_no',            label: 'Roll Number',      icon: '#',  defaultW: 35 },
+    { type: 'field',  field: 'admission_no',       label: 'Admission No',     icon: '#',  defaultW: 42 },
+    { type: 'field',  field: 'blood_group',        label: 'Blood Group',      icon: '🩸', defaultW: 20 },
+    { type: 'field',  field: 'dob',                label: 'Date of Birth',    icon: '📅', defaultW: 40 },
+    { type: 'field',  field: 'parent_phone',       label: 'Parent Phone',     icon: '📞', defaultW: 40 },
+    { type: 'field',  field: 'father_name',        label: 'Father Name',      icon: '👨', defaultW: 45 },
+    { type: 'field',  field: 'academic_year',      label: 'Academic Year',    icon: '📆', defaultW: 28 },
+    { type: 'text',   label: 'Custom Text',        icon: 'T',  defaultW: 40 },
+    { type: 'line',   label: 'Divider Line',       icon: '—',  defaultW: 80 },
+];
+
+// ── Default template ──────────────────────────────────────────────
+const defaultTemplate = () => ({
+    background: { type: 'color', value: '#1e3a8a' },
+    columns: 2,
+    elements: [
+        { id: 'e1', type: 'field', field: 'school_name', label: 'School Name',     x: 2,  y: 3,  w: 96, fontSize: 12, fontWeight: 'bold',   color: '#ffffff', textAlign: 'center', prefix: '', suffix: '' },
+        { id: 'e2', type: 'text',  text: 'STUDENT IDENTITY CARD',                  x: 2,  y: 12, w: 96, fontSize: 8,  fontWeight: 'normal',  color: '#bfdbfe', textAlign: 'center' },
+        { id: 'e3', type: 'photo',                                                  x: 3,  y: 20, w: 22, h: 65, borderRadius: 4 },
+        { id: 'e4', type: 'field', field: 'name',        label: 'Full Name',        x: 27, y: 22, w: 48, fontSize: 13, fontWeight: 'bold',   color: '#ffffff', textAlign: 'left',   prefix: '', suffix: '' },
+        { id: 'e5', type: 'field', field: 'class_section', label: 'Class & Section', x: 27, y: 38, w: 48, fontSize: 10, fontWeight: 'normal', color: '#bfdbfe', textAlign: 'left',   prefix: 'Class: ', suffix: '' },
+        { id: 'e6', type: 'field', field: 'roll_no',     label: 'Roll No',          x: 27, y: 53, w: 28, fontSize: 10, fontWeight: 'normal', color: '#e2e8f0', textAlign: 'left',   prefix: 'Roll: ', suffix: '' },
+        { id: 'e7', type: 'field', field: 'blood_group', label: 'Blood Group',      x: 57, y: 53, w: 18, fontSize: 10, fontWeight: 'bold',   color: '#fca5a5', textAlign: 'left',   prefix: '', suffix: '' },
+        { id: 'e8', type: 'qr',                                                     x: 78, y: 20, w: 20, h: 65 },
+        { id: 'e9', type: 'field', field: 'academic_year', label: 'Academic Year',  x: 2,  y: 90, w: 96, fontSize: 8,  fontWeight: 'normal', color: '#94a3b8', textAlign: 'center', prefix: '', suffix: '' },
+    ],
 });
 
-// ── Template settings ─────────────────────────────────────────────────────────
-const accentColor   = ref('#1e3a8a');
-const cardStyle     = ref('classic');   // classic | modern | minimal
-const showPhoto     = ref(true);
-const showQr        = ref(true);
-const showRollNo    = ref(true);
-const showAdmission = ref(false);
-const showDob       = ref(false);
-const showBlood     = ref(true);
-const showParent    = ref(true);
-const showAddress   = ref(false);
+// ── Template state ────────────────────────────────────────────────
+const template = ref(defaultTemplate());
+const STORAGE_KEY = 'idcard_template_v2';
 
-// ── Preview card (uses props.school + dummy student) ─────────────────────────
-const previewStudent = {
-    name:         'Aarav Sharma',
-    first_name:   'Aarav',
-    admission_no: 'ADM/2024/001',
-    roll_no:      '12',
-    dob:          '2010-03-15',
-    blood_group:  'B+',
-    gender:       'Male',
-    class:        selectedClass.value ? (props.classes.find(c => c.id == selectedClass.value)?.name || 'Class X') : 'Class X',
-    section:      'A',
-    parent_phone: '9876543210',
-    father_name:  'Rajesh Sharma',
-    photo_url:    null,
-    uuid:         'preview-uuid',
+const saveTemplate = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(template.value));
+const loadTemplate = () => {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) template.value = { ...defaultTemplate(), ...JSON.parse(saved) };
+    } catch { /* use default */ }
 };
 
-// ── Academic year label ───────────────────────────────────────────────────────
-const currentYear = new Date().getFullYear();
-const academicYearLabel = `${currentYear}-${String(currentYear + 1).slice(2)}`;
+watch(template, saveTemplate, { deep: true });
 
-// ── Print URL builder ─────────────────────────────────────────────────────────
+// ── Drag logic ────────────────────────────────────────────────────
+const canvasRef = ref(null);
+const dragging  = ref(null);
+const selected  = ref(null);
+
+const startDrag = (e, el) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    selected.value = el.id;
+    const canvasRect = canvasRef.value.getBoundingClientRect();
+    const elPxX = (el.x / 100) * canvasRect.width;
+    const elPxY = (el.y / 100) * canvasRect.height;
+    dragging.value = {
+        id: el.id,
+        offsetX: e.clientX - canvasRect.left - elPxX,
+        offsetY: e.clientY - canvasRect.top  - elPxY,
+    };
+};
+
+const onMouseMove = (e) => {
+    if (!dragging.value || !canvasRef.value) return;
+    const rect = canvasRef.value.getBoundingClientRect();
+    const el   = template.value.elements.find(el => el.id === dragging.value.id);
+    if (!el) return;
+    let nx = ((e.clientX - rect.left - dragging.value.offsetX) / rect.width)  * 100;
+    let ny = ((e.clientY - rect.top  - dragging.value.offsetY) / rect.height) * 100;
+    // Snap to 0.5% grid
+    nx = Math.round(nx * 2) / 2;
+    ny = Math.round(ny * 2) / 2;
+    el.x = Math.max(0, Math.min(100 - el.w, nx));
+    el.y = Math.max(0, Math.min(97, ny));
+};
+
+const stopDrag = () => { dragging.value = null; };
+
+const clickCanvas = (e) => {
+    if (e.target === canvasRef.value) selected.value = null;
+};
+
+onMounted(() => {
+    loadTemplate();
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', stopDrag);
+});
+onUnmounted(() => {
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', stopDrag);
+});
+
+// ── Selected element ──────────────────────────────────────────────
+const selectedEl = computed(() => template.value.elements.find(e => e.id === selected.value) ?? null);
+
+const deleteSelected = () => {
+    if (!selected.value) return;
+    template.value.elements = template.value.elements.filter(e => e.id !== selected.value);
+    selected.value = null;
+};
+
+const duplicateSelected = () => {
+    if (!selectedEl.value) return;
+    const clone = { ...selectedEl.value, id: 'e' + Date.now(), x: selectedEl.value.x + 2, y: selectedEl.value.y + 2 };
+    template.value.elements.push(clone);
+    selected.value = clone.id;
+};
+
+// ── Add element ───────────────────────────────────────────────────
+const addElement = (def) => {
+    const id = 'e' + Date.now();
+    const base = { id, type: def.type, x: 10, y: 40, w: def.defaultW || 40 };
+    if (def.type === 'photo') {
+        Object.assign(base, { h: def.defaultH || 55, borderRadius: 4 });
+    } else if (def.type === 'qr') {
+        Object.assign(base, { h: def.defaultH || 55 });
+    } else if (def.type === 'field') {
+        Object.assign(base, { field: def.field, label: def.label, fontSize: 11, fontWeight: 'normal', color: '#ffffff', textAlign: 'left', prefix: '', suffix: '' });
+    } else if (def.type === 'text') {
+        Object.assign(base, { text: 'Your text', fontSize: 11, fontWeight: 'normal', color: '#ffffff', textAlign: 'left' });
+    } else if (def.type === 'line') {
+        Object.assign(base, { color: '#ffffff' });
+    }
+    template.value.elements.push(base);
+    selected.value = id;
+};
+
+// ── Background ────────────────────────────────────────────────────
+const bgInput = ref(null);
+
+const onBgUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { template.value.background = { type: 'image', value: ev.target.result }; };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+};
+
+const removeBgImage = () => {
+    template.value.background = { type: 'color', value: '#1e3a8a' };
+};
+
+// ── Canvas styles ─────────────────────────────────────────────────
+const canvasBg = computed(() => {
+    const bg = template.value.background;
+    return bg.type === 'image'
+        ? { backgroundImage: `url(${bg.value})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+        : { background: bg.value };
+});
+
+const elStyle = (el) => ({
+    position: 'absolute',
+    left:  el.x + '%',
+    top:   el.y + '%',
+    width: el.w + '%',
+    ...(el.h ? { height: el.h + '%' } : {}),
+    cursor: 'move',
+    userSelect: 'none',
+    zIndex: selected.value === el.id ? 20 : 5,
+    outline: selected.value === el.id ? '1.5px dashed rgba(255,255,255,0.9)' : '1px dashed rgba(255,255,255,0.15)',
+    outlineOffset: '1px',
+    boxSizing: 'border-box',
+});
+
+const textCss = (el) => ({
+    fontSize:   (el.fontSize || 11) + 'px',
+    fontWeight: el.fontWeight || 'normal',
+    color:      el.color || '#ffffff',
+    textAlign:  el.textAlign || 'left',
+    lineHeight: '1.2',
+    overflow:   'hidden',
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
+});
+
+// ── Sample data for preview ───────────────────────────────────────
+const SAMPLE = {
+    name:          'Aarav Sharma',
+    class:         'Class X',
+    section:       'A',
+    class_section: 'X - A',
+    roll_no:       '12',
+    admission_no:  'ADM/24/001',
+    blood_group:   'B+',
+    dob:           '15 Mar 2010',
+    parent_phone:  '9876543210',
+    father_name:   'Raj Sharma',
+    school_name:   props.school?.name || 'School Name',
+    academic_year: '2026-27',
+};
+
+const getPreview = (el) => {
+    if (el.type === 'text') return el.text || '';
+    return (el.prefix || '') + (SAMPLE[el.field] || el.label || '') + (el.suffix || '');
+};
+
+// ── Print ─────────────────────────────────────────────────────────
 const printUrl = computed(() => {
-    const params = new URLSearchParams();
-    if (selectedClass.value)   params.set('class_id',   selectedClass.value);
-    if (selectedSection.value) params.set('section_id', selectedSection.value);
-    params.set('accent_color',   accentColor.value);
-    params.set('style',          cardStyle.value);
-    params.set('show_photo',     showPhoto.value);
-    params.set('show_qr',        showQr.value);
-    params.set('show_roll_no',   showRollNo.value);
-    params.set('show_admission', showAdmission.value);
-    params.set('show_dob',       showDob.value);
-    params.set('show_blood',     showBlood.value);
-    params.set('show_parent',    showParent.value);
-    params.set('show_address',   showAddress.value);
-    return `/school/utility/id-cards/print?${params.toString()}`;
+    const p = new URLSearchParams();
+    if (selectedClass.value)   p.set('class_id',   selectedClass.value);
+    if (selectedSection.value) p.set('section_id', selectedSection.value);
+    return `/school/utility/id-cards/print?${p.toString()}`;
 });
 
 const goToPrint = () => {
+    saveTemplate();
     window.open(printUrl.value, '_blank');
 };
 
-// ── Header background for preview ────────────────────────────────────────────
-const headerStyle = computed(() => ({ background: accentColor.value }));
-const footerStyle = computed(() => ({
-    background: cardStyle.value === 'classic' ? '#f8fafc' : accentColor.value,
-    color:      cardStyle.value === 'classic' ? '#475569' : '#ffffff',
-}));
-const cardBorderStyle = computed(() => ({
-    border: cardStyle.value === 'minimal' ? `2px solid ${accentColor.value}` : '1px solid #e2e8f0',
-}));
+const resetTemplate = () => {
+    if (!confirm('Reset to default template? Your current design will be lost.')) return;
+    template.value = defaultTemplate();
+    selected.value = null;
+};
 </script>
 
 <template>
-    <Head title="ID Cards" />
-    <SchoolLayout title="ID Cards">
+    <Head title="ID Card Designer" />
+    <SchoolLayout title="ID Card Designer">
 
-        <!-- Page Header -->
-        <div class="flex items-center justify-between mb-6">
+        <!-- ── Top bar ── -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
             <div>
-                <h1 class="text-xl font-bold text-slate-800">Bulk ID Cards</h1>
-                <p class="text-sm text-slate-500 mt-0.5">Design and print student identity cards</p>
+                <h1 class="text-xl font-bold text-slate-800">ID Card Designer</h1>
+                <p class="text-sm text-slate-500 mt-0.5">Design your card template, then generate &amp; print</p>
             </div>
-            <Button @click="goToPrint" :disabled="!selectedClass">
-                Generate &amp; Print
-            </Button>
+
+            <div class="flex items-center gap-2 flex-wrap">
+                <!-- Class filter -->
+                <select v-model="selectedClass"
+                        class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">— Select class —</option>
+                    <option v-for="cls in classes" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
+                </select>
+
+                <select v-model="selectedSection" :disabled="!selectedClass || !sections.length"
+                        class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400">
+                    <option value="">All sections</option>
+                    <option v-for="sec in sections" :key="sec.id" :value="sec.id">{{ sec.name }}</option>
+                </select>
+
+                <!-- Columns per page -->
+                <div class="flex items-center gap-1 border border-slate-300 rounded-lg overflow-hidden">
+                    <span class="text-xs text-slate-500 px-2">Cols/page</span>
+                    <button v-for="n in [1, 2, 4]" :key="n"
+                            @click="template.columns = n"
+                            :class="['px-3 py-1.5 text-sm font-medium border-l border-slate-300 transition-colors',
+                                     template.columns === n ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100']">
+                        {{ n }}
+                    </button>
+                </div>
+
+                <button @click="resetTemplate" class="px-3 py-1.5 text-sm text-slate-500 border border-slate-300 rounded-lg hover:bg-slate-50">
+                    Reset
+                </button>
+
+                <Button @click="goToPrint" :disabled="!selectedClass">
+                    Generate &amp; Print
+                </Button>
+            </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- ── Three-column layout ── -->
+        <div class="flex gap-4 items-start">
 
-            <!-- ── Left panel: Settings ── -->
-            <div class="lg:col-span-1 space-y-5">
-
-                <!-- Filter -->
-                <div class="bg-white rounded-xl border border-slate-200 p-5">
-                    <h2 class="text-sm font-semibold text-slate-700 mb-4">Filter Students</h2>
-
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Class <span class="text-red-500">*</span></label>
-                            <select v-model="selectedClass"
-                                    class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="">— Select class —</option>
-                                <option v-for="cls in classes" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Section</label>
-                            <select v-model="selectedSection"
-                                    :disabled="!selectedClass || !sections.length"
-                                    class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400">
-                                <option value="">All sections</option>
-                                <option v-for="sec in sections" :key="sec.id" :value="sec.id">{{ sec.name }}</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <p v-if="!selectedClass" class="mt-3 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-                        Select a class to enable printing.
-                    </p>
+            <!-- ── Left: Elements palette ── -->
+            <div class="w-44 flex-shrink-0 bg-white rounded-xl border border-slate-200 p-3">
+                <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Elements</div>
+                <div class="space-y-1">
+                    <button v-for="def in FIELDS" :key="def.type + (def.field || '')"
+                            @click="addElement(def)"
+                            class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors text-left border border-transparent hover:border-blue-200">
+                        <span class="text-base w-5 text-center flex-shrink-0">{{ def.icon || '▪' }}</span>
+                        <span class="truncate">{{ def.label }}</span>
+                    </button>
                 </div>
 
-                <!-- Card Style -->
-                <div class="bg-white rounded-xl border border-slate-200 p-5">
-                    <h2 class="text-sm font-semibold text-slate-700 mb-4">Card Style</h2>
+                <!-- Background section -->
+                <div class="mt-4 pt-3 border-t border-slate-200">
+                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Background</div>
 
-                    <div class="grid grid-cols-3 gap-2 mb-4">
-                        <button v-for="style in ['classic', 'modern', 'minimal']" :key="style"
-                                @click="cardStyle = style"
-                                :class="[
-                                    'py-2 rounded-lg text-xs font-medium border capitalize transition-all',
-                                    cardStyle === style
-                                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                        : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                                ]">
-                            {{ style }}
-                        </button>
+                    <div v-if="template.background.type === 'color'" class="flex items-center gap-2 mb-2">
+                        <input type="color" v-model="template.background.value"
+                               class="w-8 h-8 rounded border border-slate-200 cursor-pointer flex-shrink-0" />
+                        <input type="text" v-model="template.background.value"
+                               class="flex-1 border border-slate-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" />
                     </div>
 
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 mb-1">Accent Color</label>
-                        <div class="flex items-center gap-2">
-                            <input type="color" v-model="accentColor"
-                                   class="w-8 h-8 rounded cursor-pointer border border-slate-200" />
-                            <input type="text" v-model="accentColor"
-                                   class="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                        <!-- Color presets -->
-                        <div class="flex gap-1.5 mt-2 flex-wrap">
-                            <button v-for="color in ['#1e3a8a','#065f46','#7c2d12','#581c87','#1e293b','#be123c','#0e7490']"
-                                    :key="color"
-                                    @click="accentColor = color"
-                                    :style="{ background: color }"
-                                    class="w-6 h-6 rounded-full border-2 border-white shadow-sm hover:scale-110 transition-transform"
-                                    :class="accentColor === color ? 'ring-2 ring-offset-1 ring-slate-400' : ''" />
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Fields to show -->
-                <div class="bg-white rounded-xl border border-slate-200 p-5">
-                    <h2 class="text-sm font-semibold text-slate-700 mb-4">Fields to Include</h2>
-                    <div class="space-y-2.5">
-                        <label v-for="field in [
-                            { model: 'showPhoto',     label: 'Student Photo' },
-                            { model: 'showQr',        label: 'QR Code' },
-                            { model: 'showRollNo',    label: 'Roll Number' },
-                            { model: 'showAdmission', label: 'Admission No' },
-                            { model: 'showBlood',     label: 'Blood Group' },
-                            { model: 'showDob',       label: 'Date of Birth' },
-                            { model: 'showParent',    label: 'Parent Contact' },
-                            { model: 'showAddress',   label: 'School Address' },
-                        ]" :key="field.model" class="flex items-center gap-2.5 cursor-pointer">
-                            <input type="checkbox"
-                                   v-model="showPhoto"     v-if="field.model === 'showPhoto'"
-                                   class="w-4 h-4 rounded text-blue-600" />
-                            <input type="checkbox"
-                                   v-model="showQr"        v-else-if="field.model === 'showQr'"
-                                   class="w-4 h-4 rounded text-blue-600" />
-                            <input type="checkbox"
-                                   v-model="showRollNo"    v-else-if="field.model === 'showRollNo'"
-                                   class="w-4 h-4 rounded text-blue-600" />
-                            <input type="checkbox"
-                                   v-model="showAdmission" v-else-if="field.model === 'showAdmission'"
-                                   class="w-4 h-4 rounded text-blue-600" />
-                            <input type="checkbox"
-                                   v-model="showBlood"     v-else-if="field.model === 'showBlood'"
-                                   class="w-4 h-4 rounded text-blue-600" />
-                            <input type="checkbox"
-                                   v-model="showDob"       v-else-if="field.model === 'showDob'"
-                                   class="w-4 h-4 rounded text-blue-600" />
-                            <input type="checkbox"
-                                   v-model="showParent"    v-else-if="field.model === 'showParent'"
-                                   class="w-4 h-4 rounded text-blue-600" />
-                            <input type="checkbox"
-                                   v-model="showAddress"   v-else-if="field.model === 'showAddress'"
-                                   class="w-4 h-4 rounded text-blue-600" />
-                            <span class="text-sm text-slate-600">{{ field.label }}</span>
-                        </label>
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- ── Right panel: Live preview ── -->
-            <div class="lg:col-span-2">
-                <div class="bg-white rounded-xl border border-slate-200 p-6">
-                    <h2 class="text-sm font-semibold text-slate-700 mb-5">Live Preview</h2>
-
-                    <div class="flex justify-center">
-                        <!-- ID Card Preview -->
-                        <div class="id-card-preview" :style="cardBorderStyle">
-
-                            <!-- Header -->
-                            <div class="card-header" :style="headerStyle">
-                                <img v-if="school.logo" :src="school.logo" class="card-logo" />
-                                <div v-else class="card-logo-placeholder">🏫</div>
-                                <div class="card-school-info">
-                                    <div class="card-school-name">{{ school.name }}</div>
-                                    <div class="card-school-sub">Student Identity Card</div>
-                                    <div class="card-school-sub" v-if="school.board">{{ school.board }}</div>
-                                </div>
-                            </div>
-
-                            <!-- Body -->
-                            <div class="card-body">
-                                <!-- Photo side -->
-                                <div v-if="showPhoto" class="card-photo-col">
-                                    <div class="card-photo">
-                                        <span class="card-photo-initial">{{ previewStudent.first_name[0] }}</span>
-                                    </div>
-                                    <div v-if="showBlood && previewStudent.blood_group" class="card-blood">
-                                        {{ previewStudent.blood_group }}
-                                    </div>
-                                </div>
-
-                                <!-- Info side -->
-                                <div class="card-info-col">
-                                    <div class="card-student-name">{{ previewStudent.name }}</div>
-                                    <div class="card-class-row">
-                                        Class {{ previewStudent.class }}
-                                        <span v-if="previewStudent.section"> — Sec {{ previewStudent.section }}</span>
-                                    </div>
-                                    <div class="card-fields">
-                                        <div v-if="showRollNo" class="card-field">
-                                            <span class="cf-label">Roll No</span>
-                                            <span class="cf-value">{{ previewStudent.roll_no }}</span>
-                                        </div>
-                                        <div v-if="showAdmission" class="card-field">
-                                            <span class="cf-label">Adm No</span>
-                                            <span class="cf-value">{{ previewStudent.admission_no }}</span>
-                                        </div>
-                                        <div v-if="showDob" class="card-field">
-                                            <span class="cf-label">DOB</span>
-                                            <span class="cf-value">15/03/2010</span>
-                                        </div>
-                                        <div v-if="showParent" class="card-field">
-                                            <span class="cf-label">Parent</span>
-                                            <span class="cf-value">{{ previewStudent.parent_phone }}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- QR side -->
-                                <div v-if="showQr" class="card-qr-col">
-                                    <div class="card-qr-placeholder">
-                                        <svg viewBox="0 0 21 21" fill="none" class="card-qr-icon">
-                                            <rect x="1" y="1" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                                            <rect x="3" y="3" width="4" height="4" fill="currentColor"/>
-                                            <rect x="12" y="1" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                                            <rect x="14" y="3" width="4" height="4" fill="currentColor"/>
-                                            <rect x="1" y="12" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                                            <rect x="3" y="14" width="4" height="4" fill="currentColor"/>
-                                            <rect x="12" y="12" width="2" height="2" fill="currentColor"/>
-                                            <rect x="15" y="12" width="2" height="2" fill="currentColor"/>
-                                            <rect x="18" y="12" width="2" height="2" fill="currentColor"/>
-                                            <rect x="12" y="15" width="2" height="2" fill="currentColor"/>
-                                            <rect x="15" y="15" width="5" height="5" fill="currentColor"/>
-                                        </svg>
-                                    </div>
-                                    <div class="card-qr-label">Scan</div>
-                                </div>
-                            </div>
-
-                            <!-- Footer -->
-                            <div class="card-footer" :style="footerStyle">
-                                <span v-if="showAddress && school.address">{{ school.address }}</span>
-                                <span v-else-if="school.phone">{{ school.phone }}</span>
-                                <span v-else>{{ academicYearLabel }}</span>
-                                <span class="card-year">{{ academicYearLabel }}</span>
-                            </div>
-
-                        </div>
+                    <div v-else class="flex items-center gap-2 mb-2">
+                        <div class="text-xs text-green-600 flex-1">Image uploaded</div>
+                        <button @click="removeBgImage" class="text-xs text-red-500 hover:text-red-700">✕ Remove</button>
                     </div>
 
-                    <p class="text-center text-xs text-slate-400 mt-4">
-                        Preview shows a sample student. Actual cards will have real student photos and data.
-                    </p>
-                </div>
-
-                <!-- Print info -->
-                <div class="mt-4 bg-blue-50 rounded-xl border border-blue-200 p-4">
-                    <div class="flex gap-3 items-start">
-                        <span class="text-blue-500 text-lg">ℹ</span>
-                        <div class="text-sm text-blue-700">
-                            <strong>Print tips:</strong> Cards print 2 per row on A4 paper. Use Chrome or Edge for best results.
-                            Set margins to "None" or "Minimum" in the print dialog for full bleed.
-                        </div>
-                    </div>
+                    <label class="block w-full text-center py-1.5 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer transition-colors text-slate-600 border border-slate-300">
+                        Upload Image
+                        <input ref="bgInput" type="file" accept="image/*" class="hidden" @change="onBgUpload" />
+                    </label>
+                    <p class="text-xs text-slate-400 mt-1">Upload your pre-designed card as PNG/JPG background</p>
                 </div>
             </div>
+
+            <!-- ── Center: Canvas ── -->
+            <div class="flex-1 min-w-0">
+                <div class="bg-slate-100 rounded-xl p-4 flex flex-col items-center gap-3">
+
+                    <!-- Canvas -->
+                    <div
+                        ref="canvasRef"
+                        class="relative overflow-hidden rounded-lg shadow-xl"
+                        :style="[canvasBg, { width: CANVAS_W + 'px', height: CANVAS_H + 'px', flexShrink: 0 }]"
+                        @click="clickCanvas"
+                    >
+                        <!-- Render elements -->
+                        <div
+                            v-for="el in template.elements" :key="el.id"
+                            :style="elStyle(el)"
+                            @mousedown="(e) => startDrag(e, el)"
+                            @click.stop="selected = el.id"
+                        >
+                            <!-- Photo placeholder -->
+                            <template v-if="el.type === 'photo'">
+                                <div class="w-full h-full bg-white/20 flex items-center justify-center overflow-hidden"
+                                     :style="{ borderRadius: (el.borderRadius || 0) + 'px' }">
+                                    <span class="text-3xl">👤</span>
+                                </div>
+                            </template>
+
+                            <!-- QR placeholder -->
+                            <template v-else-if="el.type === 'qr'">
+                                <div class="w-full h-full bg-white flex items-center justify-center rounded overflow-hidden p-0.5">
+                                    <svg viewBox="0 0 21 21" fill="none" class="w-full h-full text-slate-800">
+                                        <rect x="1" y="1" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                        <rect x="3" y="3" width="4" height="4" fill="currentColor"/>
+                                        <rect x="12" y="1" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                        <rect x="14" y="3" width="4" height="4" fill="currentColor"/>
+                                        <rect x="1" y="12" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                        <rect x="3" y="14" width="4" height="4" fill="currentColor"/>
+                                        <rect x="12" y="12" width="2" height="2" fill="currentColor"/>
+                                        <rect x="15" y="12" width="2" height="2" fill="currentColor"/>
+                                        <rect x="18" y="12" width="2" height="2" fill="currentColor"/>
+                                        <rect x="12" y="15" width="2" height="2" fill="currentColor"/>
+                                        <rect x="15" y="15" width="5" height="5" fill="currentColor"/>
+                                    </svg>
+                                </div>
+                            </template>
+
+                            <!-- Divider line -->
+                            <template v-else-if="el.type === 'line'">
+                                <div class="w-full" :style="{ borderTop: `1px solid ${el.color || '#ffffff'}` }"></div>
+                            </template>
+
+                            <!-- Text / field -->
+                            <template v-else>
+                                <div :style="textCss(el)">{{ getPreview(el) }}</div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-slate-400">
+                        Click an element to select • Drag to reposition • Use properties panel to style
+                    </p>
+                </div>
+            </div>
+
+            <!-- ── Right: Properties panel ── -->
+            <div class="w-52 flex-shrink-0">
+                <div class="bg-white rounded-xl border border-slate-200 p-4">
+                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Properties</div>
+
+                    <div v-if="!selectedEl" class="text-sm text-slate-400 text-center py-6">
+                        Click an element on the canvas to edit its properties
+                    </div>
+
+                    <template v-else>
+                        <!-- Element label -->
+                        <div class="text-xs font-medium text-slate-700 mb-3 px-2 py-1.5 bg-slate-50 rounded-lg truncate">
+                            {{ selectedEl.label || selectedEl.type }}
+                        </div>
+
+                        <div class="space-y-3">
+                            <!-- Position -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-0.5">X %</label>
+                                    <input type="number" v-model.number="selectedEl.x" min="0" max="99" step="0.5"
+                                           class="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-0.5">Y %</label>
+                                    <input type="number" v-model.number="selectedEl.y" min="0" max="99" step="0.5"
+                                           class="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                </div>
+                            </div>
+
+                            <!-- Size -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-0.5">Width %</label>
+                                    <input type="number" v-model.number="selectedEl.w" min="1" max="100" step="1"
+                                           class="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                </div>
+                                <div v-if="selectedEl.h !== undefined">
+                                    <label class="block text-xs text-slate-500 mb-0.5">Height %</label>
+                                    <input type="number" v-model.number="selectedEl.h" min="1" max="100" step="1"
+                                           class="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                </div>
+                            </div>
+
+                            <!-- Text-specific properties -->
+                            <template v-if="selectedEl.type !== 'photo' && selectedEl.type !== 'qr' && selectedEl.type !== 'line'">
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-0.5">Font Size</label>
+                                    <div class="flex items-center gap-1">
+                                        <input type="range" v-model.number="selectedEl.fontSize" min="6" max="36" step="1"
+                                               class="flex-1" />
+                                        <span class="text-xs text-slate-600 w-7">{{ selectedEl.fontSize }}</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-0.5">Color</label>
+                                    <div class="flex items-center gap-1">
+                                        <input type="color" v-model="selectedEl.color"
+                                               class="w-7 h-7 rounded border border-slate-200 cursor-pointer flex-shrink-0" />
+                                        <input type="text" v-model="selectedEl.color"
+                                               class="flex-1 border border-slate-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-2">
+                                    <button @click="selectedEl.fontWeight = selectedEl.fontWeight === 'bold' ? 'normal' : 'bold'"
+                                            :class="['flex-1 py-1 text-xs rounded border font-bold transition-colors',
+                                                     selectedEl.fontWeight === 'bold' ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-300 text-slate-600']">
+                                        Bold
+                                    </button>
+                                    <button v-for="align in ['left','center','right']" :key="align"
+                                            @click="selectedEl.textAlign = align"
+                                            :class="['flex-1 py-1 text-xs rounded border transition-colors',
+                                                     selectedEl.textAlign === align ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-300 text-slate-600']">
+                                        {{ align === 'left' ? '⬅' : align === 'center' ? '↔' : '➡' }}
+                                    </button>
+                                </div>
+
+                                <!-- Custom text content -->
+                                <div v-if="selectedEl.type === 'text'">
+                                    <label class="block text-xs text-slate-500 mb-0.5">Text</label>
+                                    <input type="text" v-model="selectedEl.text"
+                                           class="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                </div>
+
+                                <!-- Prefix / Suffix for field elements -->
+                                <template v-if="selectedEl.type === 'field'">
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-0.5">Prefix</label>
+                                        <input type="text" v-model="selectedEl.prefix" placeholder="e.g. Roll: "
+                                               class="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-0.5">Suffix</label>
+                                        <input type="text" v-model="selectedEl.suffix" placeholder="optional"
+                                               class="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                    </div>
+                                </template>
+                            </template>
+
+                            <!-- Divider line color -->
+                            <template v-if="selectedEl.type === 'line'">
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-0.5">Color</label>
+                                    <div class="flex items-center gap-1">
+                                        <input type="color" v-model="selectedEl.color"
+                                               class="w-7 h-7 rounded border border-slate-200 cursor-pointer flex-shrink-0" />
+                                        <input type="text" v-model="selectedEl.color"
+                                               class="flex-1 border border-slate-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Photo border radius -->
+                            <template v-if="selectedEl.type === 'photo'">
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-0.5">Corner Radius</label>
+                                    <div class="flex items-center gap-1">
+                                        <input type="range" v-model.number="selectedEl.borderRadius" min="0" max="50" step="1"
+                                               class="flex-1" />
+                                        <span class="text-xs text-slate-600 w-7">{{ selectedEl.borderRadius }}</span>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Actions -->
+                            <div class="flex gap-2 pt-1 border-t border-slate-100">
+                                <button @click="duplicateSelected"
+                                        class="flex-1 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 rounded text-slate-600 transition-colors">
+                                    Duplicate
+                                </button>
+                                <button @click="deleteSelected"
+                                        class="flex-1 py-1.5 text-xs bg-red-50 hover:bg-red-100 rounded text-red-600 transition-colors">
+                                    Delete
+                                </button>
+                            </div>
+
+                            <!-- Layer order -->
+                            <div class="flex gap-2">
+                                <button @click="template.elements.push(template.elements.splice(template.elements.findIndex(e => e.id === selected), 1)[0])"
+                                        class="flex-1 py-1 text-xs border border-slate-300 rounded text-slate-500 hover:bg-slate-50 transition-colors">
+                                    Bring Front
+                                </button>
+                                <button @click="template.elements.unshift(template.elements.splice(template.elements.findIndex(e => e.id === selected), 1)[0])"
+                                        class="flex-1 py-1 text-xs border border-slate-300 rounded text-slate-500 hover:bg-slate-50 transition-colors">
+                                    Send Back
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Tips -->
+                <div class="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
+                    <p class="text-xs text-blue-700 font-semibold mb-1">Tips</p>
+                    <ul class="text-xs text-blue-600 space-y-1 list-disc list-inside">
+                        <li>Upload a designed card image as background</li>
+                        <li>Add variables on top of it</li>
+                        <li>Drag to position precisely</li>
+                        <li>Template auto-saves</li>
+                    </ul>
+                </div>
+            </div>
+
         </div>
 
     </SchoolLayout>
 </template>
-
-<style scoped>
-/* ── ID Card preview dimensions (CR80 proportions, scaled up for screen) ── */
-.id-card-preview {
-    width: 320px;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.12);
-    font-family: 'Inter', system-ui, sans-serif;
-    background: #fff;
-}
-
-/* Header */
-.card-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    color: #fff;
-}
-.card-logo {
-    width: 36px;
-    height: 36px;
-    object-fit: contain;
-    background: rgba(255,255,255,0.15);
-    border-radius: 6px;
-    padding: 2px;
-    flex-shrink: 0;
-}
-.card-logo-placeholder {
-    width: 36px;
-    height: 36px;
-    background: rgba(255,255,255,0.2);
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
-}
-.card-school-info { flex: 1; min-width: 0; }
-.card-school-name {
-    font-size: 10.5px;
-    font-weight: 700;
-    line-height: 1.2;
-    letter-spacing: 0.2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.card-school-sub { font-size: 8.5px; opacity: 0.85; line-height: 1.3; }
-
-/* Body */
-.card-body {
-    display: flex;
-    gap: 8px;
-    padding: 10px 12px;
-    align-items: flex-start;
-}
-
-/* Photo column */
-.card-photo-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-}
-.card-photo {
-    width: 54px;
-    height: 64px;
-    border-radius: 6px;
-    border: 1.5px solid #e2e8f0;
-    background: #f1f5f9;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-.card-photo-initial {
-    font-size: 22px;
-    font-weight: 700;
-    color: #94a3b8;
-    font-family: serif;
-}
-.card-blood {
-    font-size: 8px;
-    font-weight: 700;
-    color: #dc2626;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    border-radius: 4px;
-    padding: 1px 5px;
-    letter-spacing: 0.5px;
-}
-
-/* Info column */
-.card-info-col { flex: 1; min-width: 0; }
-.card-student-name {
-    font-size: 11px;
-    font-weight: 700;
-    color: #1e293b;
-    line-height: 1.3;
-    margin-bottom: 2px;
-}
-.card-class-row {
-    font-size: 9px;
-    color: #475569;
-    font-weight: 500;
-    margin-bottom: 5px;
-}
-.card-fields { display: flex; flex-direction: column; gap: 2px; }
-.card-field { display: flex; gap: 4px; align-items: baseline; }
-.cf-label { font-size: 8px; color: #94a3b8; font-weight: 600; width: 36px; flex-shrink: 0; }
-.cf-value { font-size: 8.5px; color: #334155; }
-
-/* QR column */
-.card-qr-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    flex-shrink: 0;
-}
-.card-qr-placeholder {
-    width: 46px;
-    height: 46px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 5px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 6px;
-}
-.card-qr-icon { width: 100%; height: 100%; color: #334155; }
-.card-qr-label { font-size: 7px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
-
-/* Footer */
-.card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 5px 12px;
-    font-size: 7.5px;
-    border-top: 1px solid #f1f5f9;
-}
-.card-year { font-weight: 700; }
-</style>
