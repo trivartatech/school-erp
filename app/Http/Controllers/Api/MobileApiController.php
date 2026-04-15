@@ -3233,7 +3233,7 @@ class MobileApiController extends Controller
         // Accept either the raw UUID or a "/q/<uuid>" URL (same shape the web
         // QRScanner.vue emits). Strip everything outside the segment.
         $raw = trim($request->uuid);
-        if (preg_match('#/q/([^/?#]+)#', $raw, $m)) {
+        if (preg_match('~/q/([^/?#]+)~', $raw, $m)) {
             $uuid = $m[1];
         } else {
             $uuid = $raw;
