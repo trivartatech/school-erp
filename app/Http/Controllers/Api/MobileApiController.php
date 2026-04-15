@@ -3389,6 +3389,172 @@ class MobileApiController extends Controller
         ]);
     }
 
+    // ── Fee Collection (Admin) ────────────────────────────────────────────────
+    // GET  /mobile/fees/collect/{studentId}  → returns student summary + fee heads list
+    // POST /mobile/fees/collect              → records a fee payment (mirrors web collectStore)
+
+    /**
+     * Guard: only staff roles can collect fees.
+     */
+    private function assertCanCollectFees(Request $request): void
+    {
+        $user     = $request->user();
+        $userType = $user->user_type instanceof \BackedEnum ? $user->user_type->value : (string) $user->user_type;
+        if (!in_array($userType, ['admin', 'school_admin', 'principal', 'super_admin', 'staff', 'accountant'])) {
+            abort(response()->json(['error' => 'Unauthorized.'], 403));
+        }
+    }
+
+    /**
+     * GET /mobile/fees/collect/{studentId}
+     * Returns student + fee summary (total_due / paid / balance / head-wise breakdown)
+     * so the mobile collection form can show what's pending.
+     */
+    public function feeCollectShow(Request $request, int $studentId): JsonResponse
+    {
+        $this->assertCanCollectFees($request);
+
+        $school = app('current_school');
+        $yearId = app()->bound('current_academic_year_id') ? app('current_academic_year_id') : null;
+
+        if (!$yearId) {
+            return response()->json(['error' => 'No active academic year.'], 422);
+        }
+
+        $student = Student::with(['currentAcademicHistory.courseClass', 'currentAcademicHistory.section'])
+            ->where('school_id', $school->id)
+            ->where('id', $studentId)
+            ->first();
+
+        if (!$student) {
+            return response()->json(['error' => 'Student not found.'], 404);
+        }
+
+        $summary = $this->feeService->getStudentFeeSummary($student, $yearId, $school->id);
+
+        // Only show heads that still have a balance or are partial/unpaid
+        $collectable = collect($summary['fee_heads'] ?? [])
+            ->filter(fn($h) => (float) ($h['balance'] ?? 0) > 0 || in_array($h['status'] ?? '', ['partial', 'unpaid', 'due']))
+            ->values()
+            ->all();
+
+        $history = $student->currentAcademicHistory;
+
+        return response()->json([
+            'student' => [
+                'id'           => $student->id,
+                'name'         => $student->name,
+                'admission_no' => $student->admission_no,
+                'class_name'   => $history->courseClass->name ?? null,
+                'section_name' => $history->section->name ?? null,
+                'photo_url'    => $this->publicFileUrl($student->photo),
+            ],
+            'summary' => [
+                'total_due' => (float) ($summary['total_due'] ?? 0),
+                'paid'      => (float) ($summary['paid']      ?? 0),
+                'discount'  => (float) ($summary['discount']  ?? 0),
+                'balance'   => (float) ($summary['balance']   ?? 0),
+            ],
+            'fee_heads'     => $collectable,
+            'all_fee_heads' => $summary['fee_heads'] ?? [],
+            'payment_modes' => ['cash', 'cheque', 'online', 'upi', 'dd', 'card'],
+        ]);
+    }
+
+    /**
+     * POST /mobile/fees/collect
+     * Records a fee payment — mirrors web FeeController::collectStore() validation
+     * and balance/status computation.
+     */
+    public function feeCollectStore(Request $request): JsonResponse
+    {
+        $this->assertCanCollectFees($request);
+
+        $school = app('current_school');
+        $yearId = app()->bound('current_academic_year_id') ? app('current_academic_year_id') : null;
+
+        if (!$yearId) {
+            return response()->json(['error' => 'No active academic year.'], 422);
+        }
+
+        $validated = $request->validate([
+            'student_id'      => [
+                'required',
+                \Illuminate\Validation\Rule::exists('students', 'id')->where('school_id', $school->id),
+            ],
+            'fee_head_id'     => [
+                'required',
+                \Illuminate\Validation\Rule::exists('fee_heads', 'id')->where('school_id', $school->id),
+            ],
+            'term'            => 'required|string|max:50',
+            'amount_due'      => 'required|numeric|min:0',
+            'amount_paid'     => 'required|numeric|min:0',
+            'discount'        => 'nullable|numeric|min:0',
+            'fine'            => 'nullable|numeric|min:0',
+            'payment_mode'    => 'required|in:cash,cheque,online,upi,dd,card',
+            'payment_date'    => 'required|date|before_or_equal:today',
+            'transaction_ref' => 'nullable|string|max:100',
+            'remarks'         => 'nullable|string',
+        ]);
+
+        $amountDue  = (float) $validated['amount_due'];
+        $amountPaid = (float) $validated['amount_paid'];
+        $discount   = (float) ($validated['discount'] ?? 0);
+        $fine       = (float) ($validated['fine'] ?? 0);
+
+        // Tax calculation for taxable heads (matches web collectStore)
+        $feeHead = \App\Models\FeeHead::find($validated['fee_head_id']);
+        $taxableAmount = $amountPaid;
+        $taxAmount     = 0.00;
+        $taxPercent    = 0.00;
+        if ($feeHead && $feeHead->is_taxable && $feeHead->gst_percent > 0) {
+            $taxPercent    = (float) $feeHead->gst_percent;
+            $taxableAmount = round($amountPaid / (1 + ($taxPercent / 100)), 2);
+            $taxAmount     = round($amountPaid - $taxableAmount, 2);
+        }
+
+        $balance = max(0, $amountDue - $discount + $fine - $amountPaid);
+        $status  = $balance <= 0 ? 'paid' : ($amountPaid > 0 ? 'partial' : 'due');
+
+        $payment = FeePayment::create([
+            'school_id'        => $school->id,
+            'student_id'       => $validated['student_id'],
+            'academic_year_id' => $yearId,
+            'fee_head_id'      => $validated['fee_head_id'],
+            'term'             => $validated['term'],
+            'amount_due'       => $amountDue,
+            'amount_paid'      => $amountPaid,
+            'discount'         => $discount,
+            'fine'             => $fine,
+            'balance'          => $balance,
+            'taxable_amount'   => $taxableAmount,
+            'tax_amount'       => $taxAmount,
+            'tax_percent'      => $taxPercent,
+            'payment_mode'     => $validated['payment_mode'],
+            'payment_date'     => $validated['payment_date'],
+            'transaction_ref'  => $validated['transaction_ref'] ?? null,
+            'status'           => $status,
+            'remarks'          => $validated['remarks'] ?? null,
+            'collected_by'     => $request->user()->id,
+        ]);
+
+        // Trigger notification (same as web flow)
+        try {
+            (new \App\Services\NotificationService($school))->notifyFeePayment($payment);
+        } catch (\Throwable $e) {
+            // Don't fail the collection if notify throws
+        }
+
+        return response()->json([
+            'success'     => true,
+            'message'     => "Payment recorded. Balance: ₹{$balance}",
+            'payment_id'  => $payment->id,
+            'receipt_no'  => $payment->receipt_no,
+            'balance'     => $balance,
+            'status'      => $status,
+        ], 201);
+    }
+
     /**
      * GET /mobile/attendance/report?class_id=X&section_id=Y&month=YYYY-MM
      * Returns per-student day-by-day map + counts, matching web AttendanceController::report().

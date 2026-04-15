@@ -95,7 +95,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->prefix('mobile')->group(function 
     Route::get('/attendance',                 [$MA, 'attendance'])->name('api.mobile.attendance');
     Route::get('/timetable',                  [$MA, 'timetable'])->name('api.mobile.timetable');
     Route::get('/fees',                       [$MA, 'fees'])->name('api.mobile.fees');
-    Route::get('/fees/{id}',                  [$MA, 'feeDetail'])->name('api.mobile.fees.detail');
+    Route::get('/fees/collect/{studentId}',   [$MA, 'feeCollectShow'])->whereNumber('studentId')->name('api.mobile.fees.collect.show');
+    Route::post('/fees/collect',              [$MA, 'feeCollectStore'])->name('api.mobile.fees.collect.store');
+    Route::get('/fees/{id}',                  [$MA, 'feeDetail'])->whereNumber('id')->name('api.mobile.fees.detail');
     Route::get('/exams',                      [$MA, 'exams'])->name('api.mobile.exams');
     Route::get('/transport/live',             [$MA, 'transport'])->name('api.mobile.transport');
     Route::get('/announcements',              [$MA, 'announcements'])->name('api.mobile.announcements');
