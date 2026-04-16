@@ -664,6 +664,15 @@ const canSeeUserManagement = computed(() => {
                                 </div>
                             </div>
 
+                            <!-- Quick Links -->
+                            <div class="profile-quick-links">
+                                <a href="/school/settings/notification-preferences" class="profile-quick-link">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                                    <span>Notification Preferences</span>
+                                    <svg class="w-3.5 h-3.5 ml-auto opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                                </a>
+                            </div>
+
                             <!-- Change Password Form -->
                             <form @submit.prevent="updatePassword" class="password-form">
                                 <div class="form-section-title">Change Password</div>
@@ -1626,8 +1635,33 @@ label {
     padding: 16px;
     background: linear-gradient(135deg, #f5f5ff 0%, #ede9fe 100%);
     border-radius: 14px;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
     border: 1px solid #e0e7ff;
+}
+.profile-quick-links {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 20px;
+}
+.profile-quick-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    font-size: .8125rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.profile-quick-link:hover {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: var(--accent);
 }
 .identity-avatar {
     width: 56px; height: 56px;
