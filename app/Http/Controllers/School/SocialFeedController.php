@@ -59,7 +59,7 @@ class SocialFeedController extends Controller
         $query->where(function ($q) use ($user) {
             $q->where('visibility', 'school');
 
-            if (in_array($user->user_type, ['staff', 'teacher', 'admin', 'school_admin', 'super_admin', 'principal'])) {
+            if (in_array($user->user_type->value, ['teacher', 'admin', 'school_admin', 'super_admin', 'principal', 'accountant'])) {
                 $q->orWhere('visibility', 'staff');
             }
 

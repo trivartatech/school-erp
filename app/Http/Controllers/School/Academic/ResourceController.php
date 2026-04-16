@@ -45,14 +45,14 @@ class ResourceController extends Controller
 
         // Teachers and admins see all; students/parents see only published materials
         $user = auth()->user();
-        if (in_array($user->user_type, ['student', 'parent'])) {
+        if (in_array($user->user_type->value, ['student', 'parent'])) {
             $materialsQ->where('is_published', true);
         }
 
         $onlineClasses     = $classesQ->latest()->paginate(20, ['*'], 'classes');
         $learningMaterials = $materialsQ->withCount('downloads')->latest()->paginate(20, ['*'], 'materials');
 
-        $isManagement = !in_array($user->user_type, ['student', 'parent']);
+        $isManagement = !in_array($user->user_type->value, ['student', 'parent']);
 
         return Inertia::render('School/Academic/Resources/Index', [
             'onlineClasses'    => $onlineClasses,

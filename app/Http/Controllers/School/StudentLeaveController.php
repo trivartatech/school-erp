@@ -88,7 +88,7 @@ class StudentLeaveController extends Controller
         $sections = [];
         $students = [];
 
-        if (in_array($user->user_type, ['admin', 'super_admin', 'teacher', 'school_admin', 'principal'])) {
+        if (in_array($user->user_type->value, ['admin', 'super_admin', 'teacher', 'school_admin', 'principal'])) {
             $classes = CourseClass::where('school_id', $schoolId)
                 ->orderBy('numeric_value')
                 ->orderBy('name')
@@ -178,7 +178,7 @@ class StudentLeaveController extends Controller
         $user     = Auth::user();
 
         // Students can only apply from today onward; management can backdate for absent students.
-        $startDateRule = in_array($user->user_type, ['student', 'parent'])
+        $startDateRule = in_array($user->user_type->value, ['student', 'parent'])
             ? 'required|date|after_or_equal:today'
             : 'required|date';
 

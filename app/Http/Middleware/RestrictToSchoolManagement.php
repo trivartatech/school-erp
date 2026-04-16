@@ -25,13 +25,13 @@ class RestrictToSchoolManagement
      * can pass the base route gate, while Spatie controller checks enforce specifics.
      */
     private const MANAGEMENT_TYPES = [
-        'admin', 'super_admin', 'school_admin', 'org_admin', 'principal',
-        'teacher', 'accountant', 'driver', 'staff'
+        'admin', 'super_admin', 'school_admin', 'principal',
+        'teacher', 'accountant', 'driver', 'front_gate_keeper',
     ];
 
     /** user_types with full school admin capabilities. */
     private const ADMIN_ONLY_TYPES = [
-        'admin', 'super_admin', 'school_admin', 'org_admin', 'principal'
+        'admin', 'super_admin', 'school_admin', 'principal',
     ];
 
     public function handle(Request $request, Closure $next, string $level = 'management'): Response
@@ -46,7 +46,7 @@ class RestrictToSchoolManagement
             ? self::ADMIN_ONLY_TYPES
             : self::MANAGEMENT_TYPES;
 
-        if (! in_array($user->user_type, $allowed, true)) {
+        if (! in_array($user->user_type->value, $allowed, true)) {
             // If the user isn't a standard management type but has been explicitly 
             // granted Spatie permissions, allow them to pass the base gate.
             if ($user->getAllPermissions()->isEmpty()) {
