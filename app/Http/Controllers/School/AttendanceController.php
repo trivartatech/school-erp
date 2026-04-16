@@ -338,7 +338,12 @@ class AttendanceController extends Controller
         $classId   = $request->get('class_id');
         $sectionId = $request->get('section_id');
 
-        $from = now()->subDays(13)->toDateString();
+        $classes  = CourseClass::where('school_id', $schoolId)->orderBy('sort_order')->get(['id', 'name']);
+        $sections = $classId
+            ? Section::where('school_id', $schoolId)->where('course_class_id', $classId)->orderBy('sort_order')->get(['id', 'name'])
+            : collect();
+
+        $from = now()->subDays(29)->toDateString();
         $to   = now()->toDateString();
 
         $records = Attendance::where('school_id', $schoolId)
@@ -401,11 +406,16 @@ class AttendanceController extends Controller
         }
 
         $allRates = array_filter(array_column($historical, 'rate'));
+        $avgRate  = count($allRates) > 0 ? round(array_sum($allRates) / count($allRates), 1) : null;
 
-        return response()->json([
-            'historical' => $historical,
-            'forecast'   => $forecast,
-            'avg_rate'   => count($allRates) > 0 ? round(array_sum($allRates) / count($allRates), 1) : null,
+        return Inertia::render('School/Attendance/Forecast', [
+            'historical'        => $historical,
+            'forecast'          => $forecast,
+            'avg_rate'          => $avgRate,
+            'classes'           => $classes,
+            'sections'          => $sections,
+            'selected_class_id' => $classId ? (int) $classId : null,
+            'selected_section_id' => $sectionId ? (int) $sectionId : null,
         ]);
     }
 
