@@ -25,7 +25,7 @@ class PeriodController extends Controller
     public function store(Request $request)
     {
         $user = auth()->user();
-        abort_if(!$user->can('manage_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage periods.');
+        abort_if(!$user->can('edit_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage periods.');
 
         $schoolId = app('current_school_id');
 
@@ -50,7 +50,7 @@ class PeriodController extends Controller
         abort_if($period->school_id !== app('current_school_id'), 403);
 
         $user = auth()->user();
-        abort_if(!$user->can('manage_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage periods.');
+        abort_if(!$user->can('edit_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage periods.');
 
         $validated = $request->validate([
             'name'       => 'required|string|max:100',
@@ -72,7 +72,7 @@ class PeriodController extends Controller
         abort_if($period->school_id !== app('current_school_id'), 403);
 
         $user = auth()->user();
-        abort_if(!$user->can('manage_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage periods.');
+        abort_if(!$user->can('edit_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage periods.');
 
         $period->delete();
 

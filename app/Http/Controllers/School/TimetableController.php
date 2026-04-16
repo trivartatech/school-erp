@@ -61,7 +61,7 @@ class TimetableController extends Controller
     public function save(Request $request)
     {
         $user = auth()->user();
-        abort_if(!$user->can('manage_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage timetables.');
+        abort_if(!$user->can('edit_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage timetables.');
 
         $schoolId = app('current_school_id');
         $validated = $request->validate([
@@ -133,7 +133,7 @@ class TimetableController extends Controller
     public function generate(Request $request)
     {
         $user = auth()->user();
-        abort_if(!$user->can('manage_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage timetables.');
+        abort_if(!$user->can('edit_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage timetables.');
 
         $schoolId = app('current_school_id');
         $validated = $request->validate([
@@ -285,7 +285,7 @@ class TimetableController extends Controller
     public function reset(Request $request)
     {
         $user = auth()->user();
-        abort_if(!$user->can('manage_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage timetables.');
+        abort_if(!$user->can('edit_schedule') && !$user->isSchoolManagement(), 403, 'You do not have permission to manage timetables.');
 
         $schoolId = app('current_school_id');
         $validated = $request->validate([

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserType;
 use App\Models\ImpersonationLog;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -49,7 +50,7 @@ class ImpersonationController extends Controller
 
         abort_unless($this->canImpersonate($actor), 403, 'Unauthorized');
 
-        $actorLevel = self::ROLE_HIERARCHY[$actor->user_type] ?? 0;
+        $actorLevel = self::ROLE_HIERARCHY[$actor->user_type->value] ?? 0;
 
         // Build allowed user_type list (only roles strictly below the actor)
         $allowedTypes = array_keys(array_filter(
@@ -59,7 +60,7 @@ class ImpersonationController extends Controller
 
         $users = User::with(['studentParent'])
             ->withTrashed(false)
-            ->when($actor->user_type !== 'super_admin', fn($q) =>
+            ->when($actor->user_type !== UserType::SuperAdmin, fn($q) =>
                 $q->where('school_id', $actor->school_id)
             )
             ->whereIn('user_type', $allowedTypes)
@@ -68,7 +69,7 @@ class ImpersonationController extends Controller
             ->get()
             ->map(function ($u) {
                 $displayName = $u->name;
-                if ($u->user_type === 'parent' && $u->studentParent) {
+                if ($u->user_type === UserType::Parent && $u->studentParent) {
                     $displayName = $u->studentParent->father_name 
                         ?: ($u->studentParent->mother_name 
                         ?: ($u->studentParent->guardian_name 
@@ -97,7 +98,7 @@ class ImpersonationController extends Controller
                 
                 if ($u) {
                     $impersonatedName = $u->name;
-                    if ($u->user_type === 'parent' && $u->studentParent) {
+                    if ($u->user_type === UserType::Parent && $u->studentParent) {
                         $impersonatedName = $u->studentParent->father_name 
                             ?: ($u->studentParent->mother_name 
                             ?: ($u->studentParent->guardian_name 
@@ -141,12 +142,12 @@ class ImpersonationController extends Controller
         abort_if($actor->id === $user->id, 422, 'You cannot impersonate yourself.');
 
         // Cannot impersonate a user with equal or higher role
-        $actorLevel  = self::ROLE_HIERARCHY[$actor->user_type]  ?? 0;
-        $targetLevel = self::ROLE_HIERARCHY[$user->user_type]   ?? 0;
+        $actorLevel  = self::ROLE_HIERARCHY[$actor->user_type->value]  ?? 0;
+        $targetLevel = self::ROLE_HIERARCHY[$user->user_type->value]   ?? 0;
         abort_unless($actorLevel > $targetLevel, 403, 'You cannot impersonate a user with an equal or higher role.');
 
         // School scoping: non-super-admin can only impersonate users in their own school
-        if ($actor->user_type !== 'super_admin') {
+        if ($actor->user_type !== UserType::SuperAdmin) {
             abort_unless($user->school_id === $actor->school_id, 403, 'You can only impersonate users within your school.');
         }
 
@@ -241,7 +242,7 @@ class ImpersonationController extends Controller
 
     private function canImpersonate(User $user): bool
     {
-        return in_array($user->user_type, self::ALLOWED_IMPERSONATORS) 
+        return in_array($user->user_type->value, self::ALLOWED_IMPERSONATORS)
                && $user->hasPermissionTo('impersonate_users');
     }
 
