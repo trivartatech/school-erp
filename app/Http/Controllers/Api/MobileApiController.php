@@ -597,8 +597,7 @@ class MobileApiController extends Controller
 
         if ($user->isTeacher() && $user->staff) {
             $items = Timetable::where('school_id', $school->id)
-                ->where('academic_year_id', $yearId)
-                ->where('teacher_id', $user->staff->id)
+                ->where('staff_id', $user->staff->id)
                 ->with(['subject', 'courseClass', 'section', 'period'])
                 ->get();
 
@@ -621,17 +620,16 @@ class MobileApiController extends Controller
 
             if ($history) {
                 $items = Timetable::where('school_id', $school->id)
-                    ->where('academic_year_id', $yearId)
-                    ->where('class_id', $history->class_id)
+                    ->where('course_class_id', $history->class_id)
                     ->where('section_id', $history->section_id)
-                    ->with(['subject', 'teacher.user:id,name', 'period'])
+                    ->with(['subject', 'staff.user:id,name', 'period'])
                     ->get();
 
                 foreach ($items as $item) {
                     $schedule[$item->day_of_week][] = [
                         'period_name'  => $item->period->name           ?? "Period {$item->period_id}",
                         'subject_name' => $item->subject->name          ?? 'Unknown',
-                        'teacher_name' => $item->teacher->user->name    ?? '',
+                        'teacher_name' => $item->staff->user->name      ?? '',
                         'start_time'   => $item->period->start_time     ?? '',
                         'end_time'     => $item->period->end_time       ?? '',
                         'room'         => $item->room                   ?? '',
