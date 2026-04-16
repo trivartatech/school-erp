@@ -543,7 +543,7 @@ const statusBadge = (status) => {
                                     <p v-if="receiptEditError && editingReceiptId === p.id" class="form-error">⚠ {{ receiptEditError }}</p>
                                     <p class="text-sm font-medium" style="color: var(--text-primary)">{{ p.fee_head?.name }}</p>
                                     <p class="text-xs" style="color: var(--text-muted)">
-                                        {{ p.payment_date }} · {{ p.payment_mode?.toUpperCase() }}
+                                        {{ school.fmtDate(p.payment_date) }} · {{ p.payment_mode?.toUpperCase() }}
                                         <span v-if="p.collected_by">· Collected by: {{ p.collected_by.name }}</span>
                                     </p>
                                 </div>
