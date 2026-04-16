@@ -325,6 +325,89 @@ class AttendanceController extends Controller
     }
 
     /**
+     * Attendance forecast: 14-day history + 7-day projected trend.
+     */
+    public function forecast(Request $request)
+    {
+        $user = auth()->user();
+        abort_if(!$user->can('view_attendance') && !$user->isSchoolManagement(), 403);
+
+        $schoolId  = app('current_school_id');
+        $classId   = $request->get('class_id');
+        $sectionId = $request->get('section_id');
+
+        $from = now()->subDays(13)->toDateString();
+        $to   = now()->toDateString();
+
+        $records = Attendance::where('school_id', $schoolId)
+            ->when($classId,   fn($q) => $q->where('class_id',   $classId))
+            ->when($sectionId, fn($q) => $q->where('section_id', $sectionId))
+            ->where('date', '>=', $from)
+            ->where('date', '<=', $to)
+            ->selectRaw('date, status, COUNT(*) as cnt')
+            ->groupBy('date', 'status')
+            ->orderBy('date')
+            ->get();
+
+        // Build per-date buckets
+        $byDate = [];
+        foreach ($records as $r) {
+            $d = (string) $r->date;
+            if (!isset($byDate[$d])) {
+                $byDate[$d] = ['present' => 0, 'absent' => 0, 'late' => 0, 'half_day' => 0, 'leave' => 0];
+            }
+            $byDate[$d][$r->status] = (int) $r->cnt;
+        }
+
+        $historical = [];
+        foreach ($byDate as $date => $c) {
+            $total   = array_sum($c);
+            $present = $c['present'] + (int) round($c['late'] * 0.5) + (int) round($c['half_day'] * 0.5);
+            $historical[] = [
+                'date'    => $date,
+                'rate'    => $total > 0 ? round($present / $total * 100, 1) : null,
+                'present' => $c['present'],
+                'absent'  => $c['absent'],
+                'total'   => $total,
+            ];
+        }
+
+        // Simple linear-regression forecast over last 7 data points
+        $forecast = [];
+        $rates    = array_filter(array_column(array_slice($historical, -7), 'rate'));
+        $n        = count($rates);
+
+        if ($n >= 3) {
+            $rates  = array_values($rates);
+            $xMean  = ($n - 1) / 2;
+            $yMean  = array_sum($rates) / $n;
+            $num    = 0;
+            $den    = 0;
+            foreach ($rates as $i => $y) {
+                $num += ($i - $xMean) * ($y - $yMean);
+                $den += ($i - $xMean) ** 2;
+            }
+            $slope     = $den > 0 ? $num / $den : 0;
+            $intercept = $yMean - $slope * $xMean;
+
+            for ($i = 1; $i <= 7; $i++) {
+                $forecast[] = [
+                    'date'           => now()->addDays($i)->toDateString(),
+                    'projected_rate' => round(max(0, min(100, $intercept + $slope * ($n - 1 + $i))), 1),
+                ];
+            }
+        }
+
+        $allRates = array_filter(array_column($historical, 'rate'));
+
+        return response()->json([
+            'historical' => $historical,
+            'forecast'   => $forecast,
+            'avg_rate'   => count($allRates) > 0 ? round(array_sum($allRates) / count($allRates), 1) : null,
+        ]);
+    }
+
+    /**
      * Rapid Scanner view
      */
     public function scanner()

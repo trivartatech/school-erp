@@ -38,12 +38,10 @@ class SyllabusController extends Controller
         $query = SyllabusTopic::where('school_id', $schoolId)
             ->with(['courseClass', 'subject']);
 
-        if ($scope->restricted) {
-            if ($scope->classIds->isNotEmpty())   $query->whereIn('class_id', $scope->classIds);
-            if ($scope->subjectRestricted && $scope->subjectIds->isNotEmpty()) {
-                $query->whereIn('subject_id', $scope->subjectIds);
-            }
-        }
+        // applyClassSubjectScope handles class + subject filtering via allowedMap,
+        // covering mixed scenarios like "class teacher of 1A + English teacher of 2A":
+        // shows ALL topics for Class 1, only English topics for Class 2.
+        app(TeacherScopeService::class)->applyClassSubjectScope($query, $scope);
 
         if ($request->filled('class_id'))   $query->where('class_id', $request->class_id);
         if ($request->filled('subject_id')) $query->where('subject_id', $request->subject_id);

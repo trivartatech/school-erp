@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Enums\StaffStatus;
+use App\Services\TeacherScopeService;
 use App\Traits\HasActivityLog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+
 
 class Staff extends Model
 {
@@ -46,6 +48,15 @@ class Staff extends Model
         'status'            => StaffStatus::class,
     ];
 
+    protected static function booted(): void
+    {
+        // Clear teacher scope cache when a staff member is deleted so that
+        // stale incharge access doesn't persist for the cache TTL window.
+        static::deleted(function (Staff $staff) {
+            app(TeacherScopeService::class)->clearCache($staff->id, $staff->school_id);
+        });
+    }
+
     /**
      * Scope a query to only include records for the current school.
      */
@@ -82,6 +93,11 @@ class Staff extends Model
         return $this->hasMany(Payroll::class);
     }
 
+    public function history()
+    {
+        return $this->hasMany(StaffHistory::class)->orderByDesc('effective_date');
+    }
+
     protected $appends = ['photo_url', 'signature_url'];
 
     public function getPhotoUrlAttribute()
@@ -103,5 +119,22 @@ class Staff extends Model
     public function editRequests()
     {
         return $this->morphMany(EditRequest::class, 'requestable');
+    }
+
+    // ── Incharge inverse relationships ────────────────────────────────────────
+
+    public function classesAsIncharge()
+    {
+        return $this->hasMany(\App\Models\CourseClass::class, 'incharge_staff_id');
+    }
+
+    public function sectionsAsIncharge()
+    {
+        return $this->hasMany(\App\Models\Section::class, 'incharge_staff_id');
+    }
+
+    public function subjectsAsIncharge()
+    {
+        return $this->hasMany(\App\Models\ClassSubject::class, 'incharge_staff_id');
     }
 }

@@ -28,6 +28,13 @@ class NotificationService
     {
         if (!$user) return;
 
+        $eventType = $notiData['event_type'] ?? null;
+
+        // Check push preference (default: enabled)
+        if ($eventType && !\App\Models\NotificationPreference::isEnabled($user->id, $eventType, 'push')) {
+            return;
+        }
+
         // Save to DB via Laravel notification system
         $user->notify(new \App\Notifications\CommunicationPortalNotification($notiData));
 
@@ -43,6 +50,15 @@ class NotificationService
                 ])
             );
         }
+    }
+
+    /**
+     * Check whether to send a specific channel for a given user and event type.
+     */
+    protected function userWantsChannel(?User $user, string $eventType, string $channel): bool
+    {
+        if (!$user) return false;
+        return \App\Models\NotificationPreference::isEnabled($user->id, $eventType, $channel);
     }
 
     protected function getTemplate($type, $slug)

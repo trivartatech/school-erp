@@ -14,7 +14,8 @@ class FeePayment extends Model
 
     protected $fillable = [
         'receipt_no', 'school_id', 'student_id', 'academic_year_id',
-        'fee_head_id', 'concession_id', 'concession_note', 'amount_due', 'amount_paid', 'discount', 'fine',
+        'fee_head_id', 'fee_structure_id', 'fee_structure_snapshot',
+        'concession_id', 'concession_note', 'amount_due', 'amount_paid', 'discount', 'fine',
         'balance', 'term', 'payment_date', 'payment_mode',
         'transaction_ref', 'status', 'remarks', 'collected_by',
         'taxable_amount', 'tax_amount', 'tax_percent',
@@ -30,17 +31,19 @@ class FeePayment extends Model
         'taxable_amount' => 'decimal:2',
         'tax_amount'     => 'decimal:2',
         'tax_percent'    => 'decimal:2',
-        'payment_date'   => 'date',
-        'status'         => FeePaymentStatus::class,
-        'payment_mode'   => PaymentMode::class,
+        'payment_date'           => 'date',
+        'status'                 => FeePaymentStatus::class,
+        'payment_mode'           => PaymentMode::class,
+        'fee_structure_snapshot' => 'array',
     ];
 
-    public function student()      { return $this->belongsTo(Student::class); }
-    public function feeHead()      { return $this->belongsTo(FeeHead::class); }
-    public function collectedBy()  { return $this->belongsTo(User::class, 'collected_by'); }
-    public function glTransaction(){ return $this->belongsTo(Transaction::class, 'gl_transaction_id'); }
-    public function academicYear() { return $this->belongsTo(AcademicYear::class); }
-    public function school()       { return $this->belongsTo(School::class); }
+    public function student()       { return $this->belongsTo(Student::class); }
+    public function feeHead()       { return $this->belongsTo(FeeHead::class); }
+    public function feeStructure()  { return $this->belongsTo(FeeStructure::class)->withTrashed(); }
+    public function collectedBy()   { return $this->belongsTo(User::class, 'collected_by'); }
+    public function glTransaction() { return $this->belongsTo(Transaction::class, 'gl_transaction_id'); }
+    public function academicYear()  { return $this->belongsTo(AcademicYear::class); }
+    public function school()        { return $this->belongsTo(School::class); }
 
     // Auto-generate receipt number using school's configurable format
     protected static function booted(): void

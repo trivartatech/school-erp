@@ -7,6 +7,7 @@ use App\Models\ExamSchedule;
 use App\Models\ExamMark;
 use App\Models\Section;
 use App\Models\Student;
+use App\Services\TeacherScopeService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -14,15 +15,21 @@ class ExamResultController extends Controller
 {
     public function index()
     {
-        $schedules = ExamSchedule::with(['examType', 'courseClass', 'sections'])
-            ->where('school_id', app('current_school_id'))
+        $schoolId = app('current_school_id');
+        $scope    = app(TeacherScopeService::class)->for(auth()->user());
+
+        $query = ExamSchedule::with(['examType', 'courseClass', 'sections'])
+            ->where('school_id', $schoolId)
             ->where('academic_year_id', app('current_academic_year_id'))
-            ->where('status', 'published')
-            ->latest()
-            ->get();
+            ->where('status', 'published');
+
+        // Restrict teachers to schedules for classes they are incharge of
+        if ($scope->restricted && $scope->classIds->isNotEmpty()) {
+            $query->whereIn('course_class_id', $scope->classIds);
+        }
 
         return Inertia::render('School/Examinations/Results/Index', [
-            'schedules' => $schedules,
+            'schedules' => $query->latest()->get(),
         ]);
     }
 
@@ -33,10 +40,14 @@ class ExamResultController extends Controller
             'section_id'       => 'required|exists:sections,id',
         ]);
 
+        $scope             = app(TeacherScopeService::class)->for(auth()->user());
+        $allowedSubjectIds = $this->validateAndGetSubjects($scope, (int) $request->exam_schedule_id, (int) $request->section_id);
+
         return response()->json(
             $this->buildResultData(
                 (int) $request->exam_schedule_id,
-                (int) $request->section_id
+                (int) $request->section_id,
+                $allowedSubjectIds
             )
         );
     }
@@ -48,9 +59,13 @@ class ExamResultController extends Controller
             'section_id'       => 'required|exists:sections,id',
         ]);
 
+        $scope             = app(TeacherScopeService::class)->for(auth()->user());
+        $allowedSubjectIds = $this->validateAndGetSubjects($scope, (int) $request->exam_schedule_id, (int) $request->section_id);
+
         $result = $this->buildResultData(
             (int) $request->exam_schedule_id,
-            (int) $request->section_id
+            (int) $request->section_id,
+            $allowedSubjectIds
         );
 
         return Inertia::render('School/Examinations/Results/Print', array_merge($result, [
@@ -59,7 +74,37 @@ class ExamResultController extends Controller
         ]));
     }
 
-    private function buildResultData(int $scheduleId, int $sectionId): array
+    /**
+     * Validate the teacher has access to the given schedule + section,
+     * and return the subject IDs they may see (null = all, array = specific ones).
+     */
+    private function validateAndGetSubjects(object $scope, int $scheduleId, int $sectionId): ?array
+    {
+        if (! $scope->restricted) {
+            return null; // admin: no filter
+        }
+
+        $schedule = ExamSchedule::where('school_id', app('current_school_id'))->findOrFail($scheduleId);
+
+        abort_unless(
+            $scope->classIds->contains($schedule->course_class_id),
+            403,
+            'You do not have access to this class.'
+        );
+        abort_unless(
+            $scope->sectionIds->contains($sectionId),
+            403,
+            'You do not have access to this section.'
+        );
+
+        return app(TeacherScopeService::class)->allowedSubjectsForSection(
+            $scope,
+            $schedule->course_class_id,
+            $sectionId
+        );
+    }
+
+    private function buildResultData(int $scheduleId, int $sectionId, ?array $allowedSubjectIds = null): array
     {
         $schoolId       = app('current_school_id');
         $academicYearId = app('current_academic_year_id');
@@ -75,7 +120,6 @@ class ExamResultController extends Controller
 
         $section = Section::where('school_id', $schoolId)->findOrFail($sectionId);
 
-        // Students sorted by roll_no from the current-year history for this section.
         $students = Student::with(['academicHistories' => fn($q) =>
                 $q->where('academic_year_id', $academicYearId)
                   ->where('section_id', $sectionId)
@@ -98,11 +142,14 @@ class ExamResultController extends Controller
             $s->roll_no = $s->academicHistories->first()?->roll_no;
         });
 
+        // Filter subjects to only those the teacher is allowed to see
         $subjects = $schedule->scheduleSubjects
             ->filter(fn($ss) => $ss->examAssessment)
+            ->when($allowedSubjectIds !== null, fn ($c) =>
+                $c->filter(fn ($ss) => in_array($ss->subject_id, $allowedSubjectIds))
+            )
             ->values();
 
-        // Max marks and passing marks per schedule subject
         $subjectMaxMap  = [];
         $subjectPassMap = [];
         foreach ($subjects as $ss) {
@@ -127,7 +174,7 @@ class ExamResultController extends Controller
 
         $rows = [];
         foreach ($students as $student) {
-            $studentMarks  = $marksMap->get($student->id, collect());
+            $studentMarks   = $marksMap->get($student->id, collect());
             $subjectResults = [];
             $totalObtained  = 0;
             $totalMax       = 0;
@@ -181,22 +228,25 @@ class ExamResultController extends Controller
             ];
         }
 
-        // Assign ranks (tied percentages get same rank)
-        $sorted = collect($rows)->sortByDesc('percentage')->values()->all();
-        $rank = 1; $prevPct = null; $prevRank = 1;
-        $rankMap = [];
-        foreach ($sorted as $i => $row) {
-            if ($prevPct !== null && $row['percentage'] < $prevPct) $prevRank = $rank;
-            $rankMap[$row['id']] = $prevRank;
-            $prevPct = $row['percentage'];
-            $rank++;
-        }
-        foreach ($rows as &$row) {
-            $row['rank'] = $rankMap[$row['id']] ?? 0;
-        }
-        unset($row);
+        // Ranks only make sense for full (unfiltered) views
+        $partialView = $allowedSubjectIds !== null;
 
-        // Summary statistics
+        if (! $partialView) {
+            $sorted  = collect($rows)->sortByDesc('percentage')->values()->all();
+            $rank    = 1; $prevPct = null; $prevRank = 1;
+            $rankMap = [];
+            foreach ($sorted as $i => $row) {
+                if ($prevPct !== null && $row['percentage'] < $prevPct) $prevRank = $rank;
+                $rankMap[$row['id']] = $prevRank;
+                $prevPct = $row['percentage'];
+                $rank++;
+            }
+            foreach ($rows as &$row) {
+                $row['rank'] = $rankMap[$row['id']] ?? 0;
+            }
+            unset($row);
+        }
+
         $percentages = collect($rows)->pluck('percentage');
         $passRows    = collect($rows)->where('percentage', '>=', 33);
         $topperRow   = collect($rows)->sortByDesc('percentage')->first();
@@ -212,18 +262,19 @@ class ExamResultController extends Controller
         ];
 
         return [
-            'schedule' => [
+            'schedule'     => [
                 'id'         => $schedule->id,
                 'name'       => $schedule->examType->name ?? '',
                 'class_name' => $schedule->courseClass->name ?? '',
             ],
-            'section'  => ['id' => $section->id, 'name' => $section->name],
-            'subjects' => $subjects->map(fn($ss) => [
+            'section'      => ['id' => $section->id, 'name' => $section->name],
+            'subjects'     => $subjects->map(fn($ss) => [
                 'id'   => $ss->subject_id,
                 'name' => $ss->subject->name ?? '',
             ])->values(),
-            'rows'     => array_values($rows),
-            'stats'    => $stats,
+            'rows'         => array_values($rows),
+            'stats'        => $stats,
+            'partial_view' => $partialView, // frontend can hide rank/overall columns when true
         ];
     }
 }

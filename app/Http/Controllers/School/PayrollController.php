@@ -283,6 +283,25 @@ class PayrollController extends Controller
     }
 
     /**
+     * Export monthly payroll as Excel
+     */
+    public function export(Request $request)
+    {
+        $schoolId = app('current_school_id');
+        $month    = $request->integer('month', now()->month);
+        $year     = $request->integer('year',  now()->year);
+
+        $months   = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+        $filename = 'Payroll_' . ($months[$month] ?? $month) . '_' . $year . '.xlsx';
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\PayrollExport($schoolId, $month, $year),
+            $filename
+        );
+    }
+
+    /**
      * POST /school/payroll/{payroll}/post-gl
      * Manually post a payroll record to the General Ledger
      */

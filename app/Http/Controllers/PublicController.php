@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CertificateIssuance;
 use App\Models\FeePayment;
 use App\Models\HostelLeaveRequest;
 use App\Models\HostelVisitor;
@@ -58,6 +59,36 @@ class PublicController extends Controller
 
         return Inertia::render('School/Hostel/Visitors/VerifyPublic', [
             'visitor' => $visitor, 'error' => null,
+        ]);
+    }
+
+    public function verifyCertificate(string $token)
+    {
+        $issuance = CertificateIssuance::where('verification_token', $token)
+            ->with(['student', 'template', 'school', 'issuedBy'])
+            ->first();
+
+        if (!$issuance) {
+            return Inertia::render('Public/CertificateVerify', [
+                'issuance' => null,
+                'error'    => 'This certificate could not be verified. The token may be invalid or expired.',
+            ]);
+        }
+
+        return Inertia::render('Public/CertificateVerify', [
+            'issuance' => [
+                'id'               => $issuance->id,
+                'certificate_no'   => $issuance->certificate_no,
+                'issued_date'      => $issuance->issued_date?->format('d F Y'),
+                'template_name'    => $issuance->template->name,
+                'school_name'      => $issuance->school->name,
+                'student_name'     => $issuance->student->name,
+                'admission_no'     => $issuance->student->admission_no,
+                'issued_by'        => $issuance->issuedBy?->name,
+                'verification_token' => $issuance->verification_token,
+                'created_at'       => $issuance->created_at->format('d M Y'),
+            ],
+            'error'    => null,
         ]);
     }
 }

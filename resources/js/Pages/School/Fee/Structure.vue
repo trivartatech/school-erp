@@ -21,13 +21,15 @@ const form = reactive({
     is_optional: false,
     student_type: 'all',
     gender: 'all',
+    change_reason: '',
 });
 
 const submit = () => {
     router.post('/school/fee/structure', form, { preserveScroll: true,
-        onSuccess: () => { 
-            form.amount = ''; form.late_fee_per_day = ''; form.due_date = ''; 
-            form.is_optional = false; form.student_type = 'all'; form.gender = 'all'; 
+        onSuccess: () => {
+            form.amount = ''; form.late_fee_per_day = ''; form.due_date = '';
+            form.is_optional = false; form.student_type = 'all'; form.gender = 'all';
+            form.change_reason = '';
             isEditing.value = false;
         }
     });
@@ -59,6 +61,7 @@ const cancelEdit = () => {
     form.is_optional = false;
     form.student_type = 'all';
     form.gender = 'all';
+    form.change_reason = '';
     isEditing.value = false;
 };
 
@@ -95,7 +98,10 @@ const grouped = computed(() => {
                     <h2 class="page-header-title">Fee Structure</h2>
                     <p class="page-header-sub">Define how much to charge per class and term</p>
                 </div>
-                <Button variant="secondary" as="a" href="/school/fee/groups">← Fee Groups</Button>
+                <div style="display:flex;gap:8px;">
+                    <Button variant="secondary" as="a" href="/school/fee/structure/history">History</Button>
+                    <Button variant="secondary" as="a" href="/school/fee/groups">← Fee Groups</Button>
+                </div>
             </div>
 
             <!-- Add / Edit entry -->
@@ -164,6 +170,11 @@ const grouped = computed(() => {
                                 <option value="female">Female Only</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="form-field mt-4" v-if="isEditing">
+                        <label>Reason for Change <span style="color:#94a3b8;font-size:.8rem;">(optional, for audit trail)</span></label>
+                        <input v-model="form.change_reason" type="text" placeholder="e.g. Annual revision 2026-27, fee hike approved by management" maxlength="255" />
                     </div>
 
                     <div class="mt-4">

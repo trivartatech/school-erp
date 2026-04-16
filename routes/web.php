@@ -10,6 +10,7 @@ Route::get('/', [\App\Http\Controllers\PublicController::class, 'home']);
 Route::get('/verify-receipt/{receipt_no}', [\App\Http\Controllers\PublicController::class, 'verifyReceipt'])->name('verify-receipt');
 Route::get('/school/hostel/gate-passes/verify/{token}', [\App\Http\Controllers\PublicController::class, 'verifyGatePass'])->name('gate-pass.verify-public');
 Route::get('/school/hostel/visitors/verify/{token}', [\App\Http\Controllers\PublicController::class, 'verifyVisitorPass'])->name('visitor-pass.verify-public');
+Route::get('/verify/certificate/{token}', [\App\Http\Controllers\PublicController::class, 'verifyCertificate'])->name('certificate.verify-public');
 
 // Student Universal QR
 Route::get('/q/{uuid}', [\App\Http\Controllers\QRScanController::class, 'show'])->name('qr.student.show');
@@ -116,6 +117,11 @@ Route::middleware('auth')->group(function () {
         Route::get('settings/general-config',  [\App\Http\Controllers\School\GeneralConfigController::class, 'index']) ->name('settings.general-config');
         Route::post('settings/general-config', [\App\Http\Controllers\School\GeneralConfigController::class, 'update'])->name('settings.general-config.update');
 
+        // Notification Preference Center (per-user, all roles)
+        $NPC = \App\Http\Controllers\School\NotificationPreferencesController::class;
+        Route::get('settings/notification-preferences',  [$NPC, 'show'])  ->name('settings.notification-preferences');
+        Route::post('settings/notification-preferences', [$NPC, 'update'])->name('settings.notification-preferences.update');
+
         // Geofence Configuration (admin)
         Route::get('settings/geofence-config', function () {
             return \Inertia\Inertia::render('School/Settings/GeoFenceConfig', [
@@ -178,6 +184,8 @@ Route::middleware('auth')->group(function () {
         Route::delete('utility/certificates/{certificateTemplate}', [\App\Http\Controllers\School\CertificateController::class, 'destroy'])->name('utility.certificates.destroy');
         Route::get('utility/certificates/{certificateTemplate}/generate', [\App\Http\Controllers\School\CertificateController::class, 'generate'])->name('utility.certificates.generate');
         Route::get('utility/certificates/{certificateTemplate}/print', [\App\Http\Controllers\School\CertificateController::class, 'print'])->name('utility.certificates.print');
+        Route::post('utility/certificates/{certificateTemplate}/issue', [\App\Http\Controllers\School\CertificateController::class, 'issue'])->name('utility.certificates.issue');
+        Route::get('utility/certificates/{certificateTemplate}/issued', [\App\Http\Controllers\School\CertificateController::class, 'issued'])->name('utility.certificates.issued');
 
         Route::post('switch-academic-year', function (\Illuminate\Http\Request $request) {
             $request->validate(['academic_year_id' => 'required|exists:academic_years,id']);
@@ -310,6 +318,7 @@ Route::middleware('auth')->group(function () {
             Route::post('attendance/rapid-scan', [\App\Http\Controllers\School\AttendanceController::class, 'rapidScan'])->name('attendance.rapid-scan');
             Route::post('attendance', [\App\Http\Controllers\School\AttendanceController::class, 'store'])->name('attendance.store');
             Route::get('attendance/report', [\App\Http\Controllers\School\AttendanceController::class, 'report'])->name('attendance.report');
+            Route::get('attendance/forecast', [\App\Http\Controllers\School\AttendanceController::class, 'forecast'])->name('attendance.forecast');
         });
 
         // ── Finance & Fees (school_admin only) ──
@@ -324,6 +333,7 @@ Route::middleware('auth')->group(function () {
             Route::delete('fee/heads/{feeHead}',  [$F, 'headDestroy'])     ->name('fee.heads.destroy');
             Route::get('fee/structure',           [$F, 'structureIndex'])  ->name('fee.structure');
             Route::post('fee/structure',          [$F, 'structureStore'])  ->name('fee.structure.store');
+            Route::get('fee/structure/history',   [$F, 'structureHistory'])->name('fee.structure.history');
             Route::delete('fee/structure/{feeStructure}', [$F, 'structureDestroy'])->name('fee.structure.destroy');
             Route::get('fee/collect',             [$F, 'collectIndex'])    ->name('fee.collect');
             // Rate-limited: max 60 payments per minute (prevents accidental double-submit spam)
@@ -477,6 +487,7 @@ Route::middleware('auth')->group(function () {
             Route::patch('payroll/{payroll}/mark-paid', [$PC, 'markPaid']) ->name('payroll.markPaid');
             Route::get('payroll/{payroll}/payslip',     [$PC, 'payslip'])  ->name('payroll.payslip');
             Route::post('payroll/{payroll}/post-gl',    [$PC, 'postGl'])   ->name('payroll.post-gl');
+            Route::get('payroll/export',                [$PC, 'export'])   ->name('payroll.export');
         });
 
         Route::middleware(['school.management', 'module:settings'])->group(function () {
@@ -730,6 +741,12 @@ Route::middleware('auth')->group(function () {
                 Route::post('gate-passes/{gatePass}/verify-otp', [\App\Http\Controllers\School\Hostel\GatePassController::class, 'verifyParentOtp'])->name('gate-passes.verify-otp');
                 Route::post('gate-passes/{gatePass}/photo', [\App\Http\Controllers\School\Hostel\GatePassController::class, 'uploadPhoto'])->name('gate-passes.photo');
 
+                // Student Self-Service: Gate Pass requests (student-facing)
+                $SGP = \App\Http\Controllers\School\Hostel\StudentGatePassController::class;
+                Route::get('my-gate-passes',                          [$SGP, 'index'])  ->name('my-gate-passes.index');
+                Route::post('my-gate-passes',                         [$SGP, 'store'])  ->name('my-gate-passes.store');
+                Route::patch('my-gate-passes/{gatePass}/cancel',      [$SGP, 'cancel']) ->name('my-gate-passes.cancel');
+
                 // Allocations: Transfer
                 Route::post('allocations/{allocation}/transfer', [\App\Http\Controllers\School\Hostel\AllocationController::class, 'transfer'])->name('allocations.transfer');
 
@@ -754,6 +771,103 @@ Route::middleware('auth')->group(function () {
 
                 // Generate Monthly Fee
                 Route::post('generate-fees', [\App\Http\Controllers\School\Hostel\DashboardController::class, 'generateFees'])->name('generate-fees');
+            });
+        });
+
+        // PTM (Parent-Teacher Meeting) Scheduling
+        Route::middleware(['module:staff'])->group(function () {
+            $PTMC = \App\Http\Controllers\School\PtmController::class;
+            Route::group(['prefix' => 'ptm', 'as' => 'ptm.'], function () use ($PTMC) {
+                Route::get('/',                                 [$PTMC, 'index'])          ->name('index');
+                Route::post('/',                               [$PTMC, 'store'])          ->name('store');
+                Route::patch('{ptmSession}/status',            [$PTMC, 'updateStatus'])   ->name('session.status');
+                Route::get('{ptmSession}',                     [$PTMC, 'sessionDetail'])  ->name('session.detail');
+                Route::patch('bookings/{ptmBooking}/notes',    [$PTMC, 'addNotes'])       ->name('bookings.notes');
+                Route::post('slots/{ptmSlot}/book',            [$PTMC, 'book'])           ->name('slots.book');
+                Route::patch('bookings/{ptmBooking}/cancel',   [$PTMC, 'cancelBooking'])  ->name('bookings.cancel');
+                Route::get('parent/view',                      [$PTMC, 'parentView'])     ->name('parent.view');
+            });
+        });
+
+        // Disciplinary / Behavior Tracking
+        Route::middleware(['school.management', 'module:students'])->group(function () {
+            $DC = \App\Http\Controllers\School\DisciplinaryController::class;
+            Route::get('disciplinary',                                  [$DC, 'index'])          ->name('disciplinary.index');
+            Route::post('disciplinary',                                  [$DC, 'store'])          ->name('disciplinary.store');
+            Route::put('disciplinary/{disciplinaryRecord}',             [$DC, 'update'])         ->name('disciplinary.update');
+            Route::delete('disciplinary/{disciplinaryRecord}',          [$DC, 'destroy'])        ->name('disciplinary.destroy');
+            Route::get('students/{student}/disciplinary',               [$DC, 'studentHistory']) ->name('students.disciplinary.history');
+        });
+
+        // Advanced Analytics Dashboard
+        Route::middleware(['school.management'])->group(function () {
+            Route::get('analytics', [\App\Http\Controllers\School\AnalyticsDashboardController::class, 'index'])->name('analytics.dashboard');
+        });
+
+        // Inventory / Asset Management
+        Route::middleware(['school.management'])->group(function () {
+            $INV = \App\Http\Controllers\School\InventoryController::class;
+            Route::get('inventory',                                    [$INV, 'index'])              ->name('inventory.index');
+            Route::post('inventory',                                   [$INV, 'store'])              ->name('inventory.store');
+            Route::put('inventory/{asset}',                            [$INV, 'update'])             ->name('inventory.update');
+            Route::post('inventory/{asset}/assign',                    [$INV, 'assign'])             ->name('inventory.assign');
+            Route::patch('inventory/{asset}/return',                   [$INV, 'returnAsset'])        ->name('inventory.return');
+            Route::post('inventory/{asset}/maintenance',               [$INV, 'maintenance'])        ->name('inventory.maintenance');
+            Route::patch('inventory/maintenance/{record}/resolve',     [$INV, 'resolveMaintenance']) ->name('inventory.maintenance.resolve');
+            Route::post('inventory/categories',                        [$INV, 'storeCategory'])      ->name('inventory.categories.store');
+        });
+
+        // Staff History / Promotion / Transfer
+        Route::middleware(['school.management'])->group(function () {
+            $SH = \App\Http\Controllers\School\StaffHistoryController::class;
+            Route::get('staff-history',                     [$SH, 'indexAll']) ->name('staff.history.all');
+            Route::get('staff/{staff}/history',             [$SH, 'show'])     ->name('staff.history.show');
+            Route::post('staff/{staff}/history',            [$SH, 'store'])    ->name('staff.history.store');
+        });
+
+        // Alumni Module
+        Route::middleware(['school.management'])->group(function () {
+            $AL = \App\Http\Controllers\School\AlumniController::class;
+            Route::get('alumni',                    [$AL, 'index'])         ->name('alumni.index');
+            Route::post('alumni/graduate',          [$AL, 'graduate'])      ->name('alumni.graduate');
+            Route::put('alumni/{alumnus}',          [$AL, 'update'])        ->name('alumni.update');
+            Route::delete('alumni/{alumnus}',       [$AL, 'destroy'])       ->name('alumni.destroy');
+            Route::get('alumni/search-students',    [$AL, 'searchStudents'])->name('alumni.search-students');
+        });
+
+        // Online Quiz Module
+        Route::middleware(['module:exam'])->group(function () {
+            $QC = \App\Http\Controllers\School\Quiz\OnlineQuizController::class;
+            Route::group(['prefix' => 'quiz', 'as' => 'quiz.'], function () use ($QC) {
+                Route::get('/',                                 [$QC, 'index'])     ->name('index');
+                Route::get('create',                           [$QC, 'create'])    ->name('create');
+                Route::post('/',                               [$QC, 'store'])     ->name('store');
+                Route::get('{quiz}/edit',                      [$QC, 'edit'])      ->name('edit');
+                Route::put('{quiz}',                           [$QC, 'update'])    ->name('update');
+                Route::delete('{quiz}',                        [$QC, 'destroy'])   ->name('destroy');
+                Route::get('{quiz}/results',                   [$QC, 'results'])   ->name('results');
+                Route::get('my-quizzes',                       [$QC, 'myQuizzes']) ->name('my-quizzes');
+                Route::get('{quiz}/take',                      [$QC, 'take'])      ->name('take');
+                Route::post('{quiz}/submit',                   [$QC, 'submit'])    ->name('submit');
+                Route::get('{quiz}/my-result/{attempt}',       [$QC, 'myResult'])  ->name('my-result');
+            });
+        });
+
+        // Library Module
+        Route::middleware(['school.management', 'module:library'])->group(function () {
+            $LC = \App\Http\Controllers\School\Library\LibraryController::class;
+            Route::group(['prefix' => 'library', 'as' => 'library.'], function () use ($LC) {
+                Route::get('/',                             [$LC, 'dashboard'])    ->name('dashboard');
+                Route::get('books',                         [$LC, 'books'])        ->name('books.index');
+                Route::post('books',                        [$LC, 'storeBook'])    ->name('books.store');
+                Route::put('books/{book}',                  [$LC, 'updateBook'])   ->name('books.update');
+                Route::delete('books/{book}',               [$LC, 'destroyBook'])  ->name('books.destroy');
+                Route::get('issues',                        [$LC, 'issues'])       ->name('issues.index');
+                Route::post('issues',                       [$LC, 'issueBook'])    ->name('issues.store');
+                Route::patch('issues/{issue}/return',       [$LC, 'returnBook'])   ->name('issues.return');
+                Route::patch('issues/{issue}/fine-paid',    [$LC, 'markFinePaid']) ->name('issues.fine-paid');
+                Route::get('settings',                      [$LC, 'settings'])     ->name('settings');
+                Route::post('settings',                     [$LC, 'updateSettings'])->name('settings.update');
             });
         });
 

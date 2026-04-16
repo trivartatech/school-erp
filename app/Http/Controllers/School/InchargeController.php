@@ -20,7 +20,6 @@ class InchargeController extends Controller
     public function index()
     {
         $schoolId = app('current_school_id');
-        $academicYearId = session('current_academic_year_id');
 
         // Load all classes with their sections, incharges, and subjects
         $classes = CourseClass::with([
@@ -71,16 +70,27 @@ class InchargeController extends Controller
         abort_if($class->school_id !== app('current_school_id'), 403);
 
         $request->validate([
-            'staff_id' => ['nullable', Rule::exists('staff', 'id')->where('school_id', app('current_school_id'))],
+            'staff_id' => [
+                'nullable',
+                Rule::exists('staff', 'id')
+                    ->where('school_id', app('current_school_id'))
+                    ->where('status', 'active'),
+            ],
         ]);
 
+        $previousStaffId = $class->incharge_staff_id;
         $class->update(['incharge_staff_id' => $request->staff_id]);
 
-        // Clear teacher scope cache so the change takes effect immediately
-        if ($request->staff_id) {
-            $staff = Staff::find($request->staff_id);
-            if ($staff) app(TeacherScopeService::class)->clearCache($staff->id, $staff->school_id);
-        }
+        $this->clearScopeCaches($previousStaffId, $request->staff_id);
+
+        activity('incharge')
+            ->causedBy(auth()->user())
+            ->performedOn($class)
+            ->withProperties([
+                'previous_staff_id' => $previousStaffId,
+                'staff_id'          => $request->staff_id,
+            ])
+            ->log($request->staff_id ? 'Class incharge assigned' : 'Class incharge removed');
 
         return back()->with('success', $request->staff_id
             ? 'Class incharge assigned successfully.'
@@ -95,12 +105,18 @@ class InchargeController extends Controller
         abort_if($section->school_id !== app('current_school_id'), 403);
 
         $request->validate([
-            'staff_id' => ['nullable', Rule::exists('staff', 'id')->where('school_id', app('current_school_id'))],
+            'staff_id' => [
+                'nullable',
+                Rule::exists('staff', 'id')
+                    ->where('school_id', app('current_school_id'))
+                    ->where('status', 'active'),
+            ],
         ]);
 
+        $previousStaffId = $section->incharge_staff_id;
         $section->update(['incharge_staff_id' => $request->staff_id]);
 
-        // Sync teacher to section chat group
+        // Sync new section incharge to the section's group chat
         if ($request->staff_id) {
             $staff = Staff::with('user')->find($request->staff_id);
             if ($staff?->user_id) {
@@ -114,9 +130,18 @@ class InchargeController extends Controller
                     );
                 }
             }
-            // Clear teacher scope cache
-            app(TeacherScopeService::class)->clearCache($staff->id, $staff->school_id);
         }
+
+        $this->clearScopeCaches($previousStaffId, $request->staff_id);
+
+        activity('incharge')
+            ->causedBy(auth()->user())
+            ->performedOn($section)
+            ->withProperties([
+                'previous_staff_id' => $previousStaffId,
+                'staff_id'          => $request->staff_id,
+            ])
+            ->log($request->staff_id ? 'Section incharge assigned' : 'Section incharge removed');
 
         return back()->with('success', $request->staff_id
             ? 'Section incharge assigned successfully.'
@@ -131,19 +156,43 @@ class InchargeController extends Controller
         abort_if($classSubject->school_id !== app('current_school_id'), 403);
 
         $request->validate([
-            'staff_id' => ['nullable', Rule::exists('staff', 'id')->where('school_id', app('current_school_id'))],
+            'staff_id' => [
+                'nullable',
+                Rule::exists('staff', 'id')
+                    ->where('school_id', app('current_school_id'))
+                    ->where('status', 'active'),
+            ],
         ]);
 
+        $previousStaffId = $classSubject->incharge_staff_id;
         $classSubject->update(['incharge_staff_id' => $request->staff_id]);
 
-        // Clear teacher scope cache
-        if ($request->staff_id) {
-            $staff = Staff::find($request->staff_id);
-            if ($staff) app(TeacherScopeService::class)->clearCache($staff->id, $staff->school_id);
-        }
+        $this->clearScopeCaches($previousStaffId, $request->staff_id);
+
+        activity('incharge')
+            ->causedBy(auth()->user())
+            ->performedOn($classSubject)
+            ->withProperties([
+                'previous_staff_id' => $previousStaffId,
+                'staff_id'          => $request->staff_id,
+            ])
+            ->log($request->staff_id ? 'Subject incharge assigned' : 'Subject incharge removed');
 
         return back()->with('success', $request->staff_id
             ? 'Subject incharge assigned successfully.'
             : 'Subject incharge removed.');
+    }
+
+    /**
+     * Clear TeacherScopeService cache for both the old and new staff.
+     */
+    private function clearScopeCaches(?int $previousStaffId, ?int $newStaffId): void
+    {
+        $service  = app(TeacherScopeService::class);
+        $schoolId = app('current_school_id');
+
+        foreach (array_unique(array_filter([$previousStaffId, $newStaffId])) as $staffId) {
+            $service->clearCache($staffId, $schoolId);
+        }
     }
 }

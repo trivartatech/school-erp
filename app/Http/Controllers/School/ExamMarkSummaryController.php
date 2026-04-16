@@ -7,6 +7,7 @@ use App\Models\ExamSchedule;
 use App\Models\ExamMark;
 use App\Models\Section;
 use App\Models\Student;
+use App\Services\TeacherScopeService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -14,15 +15,21 @@ class ExamMarkSummaryController extends Controller
 {
     public function index()
     {
-        $schedules = ExamSchedule::with(['examType', 'courseClass', 'sections'])
-            ->where('school_id', app('current_school_id'))
+        $schoolId = app('current_school_id');
+        $scope    = app(TeacherScopeService::class)->for(auth()->user());
+
+        $query = ExamSchedule::with(['examType', 'courseClass', 'sections'])
+            ->where('school_id', $schoolId)
             ->where('academic_year_id', app('current_academic_year_id'))
-            ->where('status', 'published')
-            ->latest()
-            ->get();
+            ->where('status', 'published');
+
+        // Restrict teachers to schedules for classes they are incharge of
+        if ($scope->restricted && $scope->classIds->isNotEmpty()) {
+            $query->whereIn('course_class_id', $scope->classIds);
+        }
 
         return Inertia::render('School/Examinations/MarkSummary/Index', [
-            'schedules' => $schedules,
+            'schedules' => $query->latest()->get(),
         ]);
     }
 
@@ -33,10 +40,14 @@ class ExamMarkSummaryController extends Controller
             'section_id'       => 'required|exists:sections,id',
         ]);
 
+        $scope             = app(TeacherScopeService::class)->for(auth()->user());
+        $allowedSubjectIds = $this->validateAndGetSubjects($scope, (int) $request->exam_schedule_id, (int) $request->section_id);
+
         return response()->json(
             $this->buildMarkSummaryData(
                 (int) $request->exam_schedule_id,
-                (int) $request->section_id
+                (int) $request->section_id,
+                $allowedSubjectIds
             )
         );
     }
@@ -48,9 +59,13 @@ class ExamMarkSummaryController extends Controller
             'section_id'       => 'required|exists:sections,id',
         ]);
 
+        $scope             = app(TeacherScopeService::class)->for(auth()->user());
+        $allowedSubjectIds = $this->validateAndGetSubjects($scope, (int) $request->exam_schedule_id, (int) $request->section_id);
+
         $data = $this->buildMarkSummaryData(
             (int) $request->exam_schedule_id,
-            (int) $request->section_id
+            (int) $request->section_id,
+            $allowedSubjectIds
         );
 
         return Inertia::render('School/Examinations/MarkSummary/Print', array_merge($data, [
@@ -59,7 +74,38 @@ class ExamMarkSummaryController extends Controller
         ]));
     }
 
-    private function buildMarkSummaryData(int $scheduleId, int $sectionId): array
+    /**
+     * Validate the teacher has access to the given schedule + section,
+     * and return the subject IDs they may see (null = all, array = specific ones).
+     */
+    private function validateAndGetSubjects(object $scope, int $scheduleId, int $sectionId): ?array
+    {
+        if (! $scope->restricted) {
+            return null; // admin: no filter
+        }
+
+        $schedule = ExamSchedule::where('school_id', app('current_school_id'))->findOrFail($scheduleId);
+
+        abort_unless(
+            $scope->classIds->contains($schedule->course_class_id),
+            403,
+            'You do not have access to this class.'
+        );
+        abort_unless(
+            $scope->sectionIds->contains($sectionId),
+            403,
+            'You do not have access to this section.'
+        );
+
+        // Returns null (all subjects) or a specific array of subject IDs
+        return app(TeacherScopeService::class)->allowedSubjectsForSection(
+            $scope,
+            $schedule->course_class_id,
+            $sectionId
+        );
+    }
+
+    private function buildMarkSummaryData(int $scheduleId, int $sectionId, ?array $allowedSubjectIds = null): array
     {
         $schoolId       = app('current_school_id');
         $academicYearId = app('current_academic_year_id');
@@ -99,9 +145,12 @@ class ExamMarkSummaryController extends Controller
             $s->roll_no = $s->academicHistories->first()?->roll_no;
         });
 
-        // Step 3 — Build the flat column descriptor list (one entry per assessment item per subject)
+        // Step 3 — Filter to subjects the teacher is allowed to see, then build columns
         $subjects = $schedule->scheduleSubjects
             ->filter(fn($ss) => $ss->examAssessment)
+            ->when($allowedSubjectIds !== null, fn ($c) =>
+                $c->filter(fn ($ss) => in_array($ss->subject_id, $allowedSubjectIds))
+            )
             ->values();
 
         $columns = [];
@@ -191,15 +240,16 @@ class ExamMarkSummaryController extends Controller
         }
 
         return [
-            'schedule'  => [
+            'schedule'      => [
                 'id'         => $schedule->id,
                 'name'       => $schedule->examType->name ?? '',
                 'class_name' => $schedule->courseClass->name ?? '',
             ],
-            'section'   => ['id' => $section->id, 'name' => $section->name],
-            'columns'   => $columns,
-            'rows'      => $rows,
-            'col_stats' => $colStats,
+            'section'       => ['id' => $section->id, 'name' => $section->name],
+            'columns'       => $columns,
+            'rows'          => $rows,
+            'col_stats'     => $colStats,
+            'partial_view'  => $allowedSubjectIds !== null, // true when subject-restricted teacher
         ];
     }
 }

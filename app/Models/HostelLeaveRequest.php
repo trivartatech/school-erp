@@ -11,6 +11,8 @@ class HostelLeaveRequest extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected $table = 'gate_passes';
+
     protected $fillable = [
         'school_id', 'student_id', 'leave_type', 'from_date', 'to_date', 'reason',
         'destination', 'status', 'approved_by', 'actual_out_time', 'actual_in_time', 'late_reason',

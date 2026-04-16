@@ -58,6 +58,7 @@ const onDropClass = (cls) => {
     dragOver.value = null;
     if (!dragging.value) return;
     const key = `class-${cls.id}`;
+    if (submitting.value) return;  // prevent double-submission while a request is in flight
     submitting.value = key;
     router.post(`/school/incharge/class/${cls.id}`, { staff_id: dragging.value.id }, {
         preserveScroll: true,
@@ -70,6 +71,7 @@ const onDropSection = (section) => {
     dragOver.value = null;
     if (!dragging.value) return;
     const key = `section-${section.id}`;
+    if (submitting.value) return;  // prevent double-submission while a request is in flight
     submitting.value = key;
     router.post(`/school/incharge/section/${section.id}`, { staff_id: dragging.value.id }, {
         preserveScroll: true,
@@ -82,6 +84,7 @@ const onDropSubject = (cs) => {
     dragOver.value = null;
     if (!dragging.value) return;
     const key = `subject-${cs.id}`;
+    if (submitting.value) return;  // prevent double-submission while a request is in flight
     submitting.value = key;
     router.post(`/school/incharge/subject/${cs.id}`, { staff_id: dragging.value.id }, {
         preserveScroll: true,

@@ -136,6 +136,11 @@ class Student extends Model
             ->whereRaw('LOWER(status) = ?', ['active']); // case-insensitive: handles 'Active' and 'active'
     }
 
+    public function alumni()
+    {
+        return $this->hasOne(\App\Models\Alumni::class);
+    }
+
     public function transferCertificates()
     {
         return $this->hasMany(TransferCertificate::class);

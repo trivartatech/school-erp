@@ -41,12 +41,9 @@ class AssignmentController extends Controller
             ->where('school_id', $schoolId)
             ->where('academic_year_id', $academicYearId);
 
-        if ($scope->restricted) {
-            $query->whereIn('section_id', $scope->sectionIds->isEmpty() ? [-1] : $scope->sectionIds);
-            if ($scope->subjectRestricted) {
-                $query->whereIn('subject_id', $scope->subjectIds->isEmpty() ? [-1] : $scope->subjectIds);
-            }
-        }
+        // applySubjectScope handles both section and subject filtering via allowedMap,
+        // covering mixed scenarios like "class teacher of 1A + English teacher of 2A".
+        app(TeacherScopeService::class)->applySubjectScope($query, $scope);
 
         if ($request->filled('class_id'))   $query->where('class_id', $request->class_id);
         if ($request->filled('subject_id')) $query->where('subject_id', $request->subject_id);

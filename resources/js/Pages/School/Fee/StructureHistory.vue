@@ -1,0 +1,154 @@
+<script setup>
+import SchoolLayout from '@/Layouts/SchoolLayout.vue';
+import { Link } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+
+const props = defineProps({
+    history:  { type: Array,  default: () => [] },
+    classes:  { type: Array,  default: () => [] },
+    feeHeads: { type: Array,  default: () => [] },
+});
+
+// Filter form state (mirror query params)
+const classId   = ref(new URLSearchParams(window.location.search).get('class_id')   ?? '');
+const feeHeadId = ref(new URLSearchParams(window.location.search).get('fee_head_id') ?? '');
+const term      = ref(new URLSearchParams(window.location.search).get('term')        ?? '');
+
+const terms = ['annual','term1','term2','term3','monthly','quarterly','half_yearly'];
+
+const search = () => {
+    if (!classId.value || !feeHeadId.value || !term.value) return;
+    router.get('/school/fee/structure/history', {
+        class_id:    classId.value,
+        fee_head_id: feeHeadId.value,
+        term:        term.value,
+    }, { preserveState: true, preserveScroll: true });
+};
+
+const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+
+const currentEntry = computed(() => props.history.find(h => !h.effective_to));
+const archivedEntries = computed(() => props.history.filter(h => h.effective_to));
+</script>
+
+<template>
+    <SchoolLayout title="Fee Structure History">
+        <div class="page-header">
+            <div>
+                <Link href="/school/fee/structure" style="font-size:.8rem;color:#94a3b8;">← Back to Fee Structure</Link>
+                <h1 class="page-header-title" style="margin-top:4px;">Fee Structure Version History</h1>
+                <p style="color:#64748b;font-size:.9rem;margin-top:2px;">Audit trail of all fee amount changes with effective dates.</p>
+            </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="card" style="margin-bottom:20px;">
+            <div class="card-header"><span class="card-title">Select Fee Structure</span></div>
+            <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;">
+                <div class="form-field" style="margin:0;">
+                    <label>Class</label>
+                    <select v-model="classId">
+                        <option value="">— Select Class —</option>
+                        <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
+                    </select>
+                </div>
+                <div class="form-field" style="margin:0;">
+                    <label>Fee Head</label>
+                    <select v-model="feeHeadId">
+                        <option value="">— Select Fee Head —</option>
+                        <option v-for="f in feeHeads" :key="f.id" :value="f.id">{{ f.name }}</option>
+                    </select>
+                </div>
+                <div class="form-field" style="margin:0;">
+                    <label>Term</label>
+                    <select v-model="term">
+                        <option value="">— Select Term —</option>
+                        <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" @click="search" :disabled="!classId || !feeHeadId || !term">View History</button>
+            </div>
+        </div>
+
+        <div v-if="history.length === 0 && (classId && feeHeadId && term)" style="text-align:center;padding:40px;color:#94a3b8;">
+            No history found for this combination.
+        </div>
+
+        <div v-if="history.length > 0">
+            <!-- Current Active Version -->
+            <div v-if="currentEntry" class="card" style="margin-bottom:20px;border:2px solid #86efac;">
+                <div class="card-header" style="background:#f0fdf4;">
+                    <span class="card-title" style="color:#16a34a;">Current Active Version</span>
+                    <span class="badge badge-green">Active</span>
+                </div>
+                <div style="padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;">
+                    <div>
+                        <div style="font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Amount</div>
+                        <div style="font-size:1.5rem;font-weight:700;color:#1e293b;">₹{{ Number(currentEntry.amount).toLocaleString('en-IN') }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Effective From</div>
+                        <div style="font-weight:600;">{{ fmt(currentEntry.effective_from) }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Due Date</div>
+                        <div style="font-weight:600;">{{ fmt(currentEntry.due_date) }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Late Fee / Day</div>
+                        <div style="font-weight:600;">₹{{ currentEntry.late_fee_per_day ?? 0 }}</div>
+                    </div>
+                    <div v-if="currentEntry.change_reason">
+                        <div style="font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Change Reason</div>
+                        <div style="font-size:.85rem;color:#475569;font-style:italic;">{{ currentEntry.change_reason }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Timeline -->
+            <div v-if="archivedEntries.length" class="card">
+                <div class="card-header">
+                    <span class="card-title">Previous Versions ({{ archivedEntries.length }})</span>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Amount</th>
+                                <th>Late Fee/Day</th>
+                                <th>Due Date</th>
+                                <th>Effective From</th>
+                                <th>Effective To</th>
+                                <th>Change Reason</th>
+                                <th>Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(entry, idx) in archivedEntries" :key="entry.id" style="background:#fafafa;">
+                                <td style="color:#94a3b8;font-size:.8rem;">v{{ archivedEntries.length - idx }}</td>
+                                <td style="font-weight:600;">₹{{ Number(entry.amount).toLocaleString('en-IN') }}</td>
+                                <td>₹{{ entry.late_fee_per_day ?? 0 }}</td>
+                                <td>{{ fmt(entry.due_date) }}</td>
+                                <td>{{ fmt(entry.effective_from) }}</td>
+                                <td><span class="badge badge-gray">{{ fmt(entry.effective_to) }}</span></td>
+                                <td style="color:#64748b;font-size:.85rem;font-style:italic;">{{ entry.change_reason ?? '—' }}</td>
+                                <td style="font-size:.8rem;color:#94a3b8;">
+                                    <span v-if="entry.effective_from && entry.effective_to">
+                                        {{ Math.round((new Date(entry.effective_to) - new Date(entry.effective_from)) / (1000*60*60*24)) }} days
+                                    </span>
+                                    <span v-else>—</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div v-if="!archivedEntries.length && currentEntry" style="padding:16px;text-align:center;color:#94a3b8;font-size:.9rem;">
+                No previous versions. This is the first and only entry.
+            </div>
+        </div>
+    </SchoolLayout>
+</template>

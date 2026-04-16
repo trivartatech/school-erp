@@ -3,6 +3,7 @@ import { createInertiaApp } from '@inertiajs/vue3'
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers'
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { createPinia } from 'pinia'
+import { i18n } from './plugins/i18n.js'
 import '../css/app.css'
 
 const pinia = createPinia()
@@ -19,6 +20,7 @@ createInertiaApp({
             .use(plugin)
             .use(ZiggyVue)
             .use(pinia)
+            .use(i18n)
 
         app.config.errorHandler = (err, instance, info) => {
             console.error('[Vue Error]', err, info)

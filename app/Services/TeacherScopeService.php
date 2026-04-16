@@ -161,6 +161,107 @@ class TeacherScopeService
         return $entry === 'ALL' ? null : $entry;
     }
 
+    /**
+     * Apply combined section + subject scope for subject-sensitive queries
+     * (assignments, diary entries, mark summaries, etc.).
+     *
+     * Reads allowedMap directly — handles ALL three incharge scenarios and mixed
+     * combinations without relying on the coarse subjectRestricted flag:
+     *
+     *   class incharge of 1A + English teacher of 2A →
+     *     WHERE (section_id = 1A)
+     *        OR (section_id = 2A AND subject_id = english_id)
+     *
+     * This replaces the old two-step approach (whereIn sectionIds + applySubjectScope).
+     * Call this instead of applySectionScope() for any query that also has a subject column.
+     */
+    public function applySubjectScope(
+        $query,
+        object $scope,
+        string $sectionColumn = 'section_id',
+        string $subjectColumn = 'subject_id'
+    ): void {
+        if (! $scope->restricted) {
+            return; // admin: no filter
+        }
+
+        if (empty($scope->allowedMap)) {
+            $query->whereRaw('1 = 0'); // no incharge roles at all → see nothing
+            return;
+        }
+
+        $query->where(function ($q) use ($scope, $sectionColumn, $subjectColumn) {
+            foreach ($scope->allowedMap as $sections) {
+                foreach ($sections as $sectionId => $subjects) {
+                    if ($subjects === 'ALL') {
+                        // class or section incharge → unrestricted for this section
+                        $q->orWhere($sectionColumn, $sectionId);
+                    } elseif (is_array($subjects) && ! empty($subjects)) {
+                        // subject incharge → only those subjects in this section
+                        $q->orWhere(fn ($sq) =>
+                            $sq->where($sectionColumn, $sectionId)
+                               ->whereIn($subjectColumn, $subjects)
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Apply class + subject scope for models without a section column (e.g. SyllabusTopic).
+     *
+     * Per class: if any section has 'ALL' access the teacher sees all subjects in that
+     * class; otherwise only the union of their specific subject IDs for that class.
+     *
+     *   class incharge of 1A + English teacher of 2A →
+     *     WHERE (class_id = class1)
+     *        OR (class_id = class2 AND subject_id = english_id)
+     */
+    public function applyClassSubjectScope(
+        $query,
+        object $scope,
+        string $classColumn   = 'class_id',
+        string $subjectColumn = 'subject_id'
+    ): void {
+        if (! $scope->restricted) {
+            return;
+        }
+
+        if (empty($scope->allowedMap)) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->where(function ($q) use ($scope, $classColumn, $subjectColumn) {
+            foreach ($scope->allowedMap as $classId => $sections) {
+                $hasAll     = false;
+                $subjectIds = collect();
+                foreach ($sections as $subjects) {
+                    if ($subjects === 'ALL') {
+                        $hasAll = true;
+                        break;
+                    }
+                    if (is_array($subjects)) {
+                        $subjectIds = $subjectIds->merge($subjects);
+                    }
+                }
+
+                if ($hasAll) {
+                    // class/section incharge → all subjects visible for this class
+                    $q->orWhere($classColumn, $classId);
+                } else {
+                    $ids = $subjectIds->unique()->values()->all();
+                    if (! empty($ids)) {
+                        $q->orWhere(fn ($sq) =>
+                            $sq->where($classColumn, $classId)->whereIn($subjectColumn, $ids)
+                        );
+                    }
+                }
+            }
+        });
+    }
+
     /** Clear cached scope (call after any incharge assignment change) */
     public function clearCache(int $staffId, int $schoolId): void
     {

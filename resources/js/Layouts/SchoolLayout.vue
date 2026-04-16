@@ -10,6 +10,7 @@ import ChatWidget from '@/Components/ChatWidget.vue';
 import AiChatbot from '@/Components/AiChatbot.vue';
 import Button from '@/Components/ui/Button.vue';
 import Toast from '@/Components/ui/Toast.vue';
+import LanguageSwitcher from '@/Components/ui/LanguageSwitcher.vue';
 
 const props = defineProps({
     title: { type: String, default: 'School ERP' },
@@ -562,6 +563,9 @@ const canSeeUserManagement = computed(() => {
                             </div>
                         </Transition>
                     </div>
+
+                    <!-- Language Switcher -->
+                    <LanguageSwitcher style="margin-right:4px;" />
 
                     <!-- Divider -->
                     <div class="topbar-divider"></div>

@@ -77,9 +77,14 @@ const fmt = (n) => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDi
                 <h1 class="page-header-title" style="width:200px;text-align:center;margin:0;">{{ monthNames[curMonth] }} {{ curYear }}</h1>
                 <Button variant="icon" size="sm" aria-label="Next month" @click="navigate(1)">&#9654;</Button>
             </div>
-            <Button @click="generate" :loading="genForm.processing">
-                Generate Payroll
-            </Button>
+            <div style="display:flex;gap:8px;">
+                <Button variant="secondary" as="link" :href="`/school/payroll/export?month=${curMonth}&year=${curYear}`" target="_blank">
+                    Export Excel
+                </Button>
+                <Button @click="generate" :loading="genForm.processing">
+                    Generate Payroll
+                </Button>
+            </div>
         </div>
 
         <!-- Summary Cards -->

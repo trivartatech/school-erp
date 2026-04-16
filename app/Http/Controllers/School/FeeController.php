@@ -170,22 +170,107 @@ class FeeController extends Controller
             'is_optional'      => 'boolean',
             'student_type'     => 'in:all,new,old',
             'gender'           => 'in:all,male,female',
+            'change_reason'    => 'nullable|string|max:255',
         ]);
 
-        FeeStructure::updateOrCreate(
-            [
-                'school_id' => $schoolId, 'academic_year_id' => $academicYearId, 'class_id' => $request->class_id, 
-                'fee_head_id' => $request->fee_head_id, 'term' => $request->term
-            ],
-            [
-                'amount' => $request->amount, 'late_fee_per_day' => $request->late_fee_per_day ?? 0, 'due_date' => $request->due_date,
-                'is_optional' => $request->is_optional ?? false,
+        $today = now()->toDateString();
+
+        // Find existing active structure for this combination
+        $existing = FeeStructure::where('school_id', $schoolId)
+            ->where('academic_year_id', $academicYearId)
+            ->where('class_id', $request->class_id)
+            ->where('fee_head_id', $request->fee_head_id)
+            ->where('term', $request->term)
+            ->whereNull('effective_to')
+            ->first();
+
+        if ($existing) {
+            // If amount/due_date changed: version it — close old, open new
+            $amountChanged   = (float) $existing->amount !== (float) $request->amount;
+            $dueDateChanged  = $existing->due_date?->toDateString() !== $request->due_date;
+            $lateChanged     = (float) $existing->late_fee_per_day !== (float) ($request->late_fee_per_day ?? 0);
+
+            if ($amountChanged || $dueDateChanged || $lateChanged) {
+                // Close the existing version
+                $existing->update(['effective_to' => $today]);
+
+                // Create the new version, linking back
+                $newStructure = FeeStructure::create([
+                    'school_id'             => $schoolId,
+                    'academic_year_id'      => $academicYearId,
+                    'class_id'              => $request->class_id,
+                    'fee_head_id'           => $request->fee_head_id,
+                    'term'                  => $request->term,
+                    'amount'                => $request->amount,
+                    'late_fee_per_day'      => $request->late_fee_per_day ?? 0,
+                    'due_date'              => $request->due_date,
+                    'is_optional'           => $request->is_optional ?? false,
+                    'student_type'          => $request->student_type ?? 'all',
+                    'gender'                => $request->gender ?? 'all',
+                    'effective_from'        => $today,
+                    'change_reason'         => $request->change_reason,
+                ]);
+
+                // Point old record to the new one
+                $existing->update(['superseded_by' => $newStructure->id]);
+
+                return back()->with('success', 'Fee structure updated. Previous version archived for audit trail.');
+            }
+
+            // No financial change — just update metadata
+            $existing->update([
+                'is_optional'  => $request->is_optional ?? false,
                 'student_type' => $request->student_type ?? 'all',
-                'gender' => $request->gender ?? 'all',
-            ]
-        );
+                'gender'       => $request->gender ?? 'all',
+            ]);
+            return back()->with('success', 'Fee structure saved.');
+        }
+
+        // First time entry
+        FeeStructure::create([
+            'school_id'        => $schoolId,
+            'academic_year_id' => $academicYearId,
+            'class_id'         => $request->class_id,
+            'fee_head_id'      => $request->fee_head_id,
+            'term'             => $request->term,
+            'amount'           => $request->amount,
+            'late_fee_per_day' => $request->late_fee_per_day ?? 0,
+            'due_date'         => $request->due_date,
+            'is_optional'      => $request->is_optional ?? false,
+            'student_type'     => $request->student_type ?? 'all',
+            'gender'           => $request->gender ?? 'all',
+            'effective_from'   => $today,
+            'change_reason'    => $request->change_reason,
+        ]);
 
         return back()->with('success', 'Fee structure saved.');
+    }
+
+    public function structureHistory(Request $request)
+    {
+        $schoolId       = app('current_school_id');
+        $academicYearId = app()->bound('current_academic_year_id') ? app('current_academic_year_id') : null;
+
+        $request->validate([
+            'class_id'    => 'required|exists:course_classes,id',
+            'fee_head_id' => 'required|exists:fee_heads,id',
+            'term'        => 'required|string|max:50',
+        ]);
+
+        $history = FeeStructure::withTrashed()
+            ->where('school_id', $schoolId)
+            ->where('academic_year_id', $academicYearId)
+            ->where('class_id', $request->class_id)
+            ->where('fee_head_id', $request->fee_head_id)
+            ->where('term', $request->term)
+            ->with(['feeHead', 'courseClass'])
+            ->orderByDesc('effective_from')
+            ->get();
+
+        $classes   = \App\Models\CourseClass::where('school_id', $schoolId)->orderBy('sort_order')->get();
+        $feeHeads  = FeeHead::where('school_id', $schoolId)->with('feeGroup')->get();
+
+        return Inertia::render('School/Fee/StructureHistory', compact('history', 'classes', 'feeHeads'));
     }
 
     public function structureDestroy(FeeStructure $feeStructure)
@@ -536,28 +621,48 @@ class FeeController extends Controller
 
 
 
+        // Snapshot the current fee structure at time of payment for audit trail
+        $feeStructureRecord = FeeStructure::where('school_id', $schoolId)
+            ->where('academic_year_id', $academicYearId)
+            ->where('fee_head_id', $request->fee_head_id)
+            ->where('term', $request->term)
+            ->whereNull('effective_to')
+            ->first();
+
+        $feeStructureSnapshot = $feeStructureRecord ? [
+            'id'               => $feeStructureRecord->id,
+            'amount'           => (string) $feeStructureRecord->amount,
+            'late_fee_per_day' => (string) $feeStructureRecord->late_fee_per_day,
+            'due_date'         => $feeStructureRecord->due_date?->toDateString(),
+            'effective_from'   => $feeStructureRecord->effective_from?->toDateString(),
+            'term'             => $feeStructureRecord->term,
+            'captured_at'      => now()->toDateTimeString(),
+        ] : null;
+
         $payment = FeePayment::create([
-            'school_id'        => $schoolId,
-            'student_id'       => $request->student_id,
-            'academic_year_id' => $academicYearId,
-            'fee_head_id'      => $request->fee_head_id,
-            'term'             => $request->term,
-            'amount_due'       => $amountDue,
-            'amount_paid'      => $amountPaid,
-            'discount'         => $discount,
-            'fine'             => $fine,
-            'balance'          => $balance,
-            'taxable_amount'   => $taxableAmount,
-            'tax_amount'       => $taxAmount,
-            'tax_percent'      => $taxPercent,
-            'payment_mode'     => $request->payment_mode,
-            'payment_date'     => $request->payment_date,
-            'transaction_ref'  => $request->transaction_ref,
-            'status'           => $status,
-            'remarks'          => $request->remarks,
-            'collected_by'     => auth()->id(),
-            'concession_id'    => $concessionId,
-            'concession_note'  => $concessionNote,
+            'school_id'              => $schoolId,
+            'student_id'             => $request->student_id,
+            'academic_year_id'       => $academicYearId,
+            'fee_head_id'            => $request->fee_head_id,
+            'fee_structure_id'       => $feeStructureRecord?->id,
+            'fee_structure_snapshot' => $feeStructureSnapshot,
+            'term'                   => $request->term,
+            'amount_due'             => $amountDue,
+            'amount_paid'            => $amountPaid,
+            'discount'               => $discount,
+            'fine'                   => $fine,
+            'balance'                => $balance,
+            'taxable_amount'         => $taxableAmount,
+            'tax_amount'             => $taxAmount,
+            'tax_percent'            => $taxPercent,
+            'payment_mode'           => $request->payment_mode,
+            'payment_date'           => $request->payment_date,
+            'transaction_ref'        => $request->transaction_ref,
+            'status'                 => $status,
+            'remarks'                => $request->remarks,
+            'collected_by'           => auth()->id(),
+            'concession_id'          => $concessionId,
+            'concession_note'        => $concessionNote,
         ]);
 
         // Trigger Notification

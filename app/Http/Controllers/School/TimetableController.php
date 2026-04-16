@@ -72,6 +72,34 @@ class TimetableController extends Controller
 
         $sectionId = $validated['section_id'];
 
+        // ── Teacher clash detection ───────────────────────────────────────────
+        $days = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        $clashes = [];
+        foreach ($validated['timetables'] as $item) {
+            if (empty($item['staff_id']) || empty($item['subject_id'])) continue;
+
+            $clash = \App\Models\Timetable::where('school_id', $schoolId)
+                ->where('day_of_week', $item['day_of_week'])
+                ->where('period_id', $item['period_id'])
+                ->where('staff_id', $item['staff_id'])
+                ->where('section_id', '!=', $sectionId)
+                ->with(['staff.user', 'section', 'period'])
+                ->first();
+
+            if ($clash) {
+                $staffName = $clash->staff->user->name ?? 'Unknown Teacher';
+                $periodName = $clash->period->name ?? "Period {$item['period_id']}";
+                $dayName = $days[$item['day_of_week']] ?? $item['day_of_week'];
+                $sectionName = $clash->section->name ?? 'another section';
+                $clashes[] = "{$staffName} is already assigned on {$dayName} ({$periodName}) to {$sectionName}.";
+            }
+        }
+
+        if (!empty($clashes)) {
+            return back()->withErrors(['clash' => implode(' ', $clashes)])->with('error', 'Teacher clash detected. Please resolve before saving.');
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         DB::transaction(function () use ($validated, $schoolId, $sectionId) {
             foreach ($validated['timetables'] as $item) {
                 if (empty($item['subject_id'])) {

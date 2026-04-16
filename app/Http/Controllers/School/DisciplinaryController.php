@@ -1,0 +1,123 @@
+<?php
+
+namespace App\Http\Controllers\School;
+
+use App\Http\Controllers\Controller;
+use App\Models\DisciplinaryRecord;
+use App\Models\Student;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+
+class DisciplinaryController extends Controller
+{
+    public function index(Request $request)
+    {
+        $schoolId = app('current_school_id');
+
+        $query = DisciplinaryRecord::where('school_id', $schoolId)
+            ->with(['student', 'reportedBy']);
+
+        if ($request->filled('status'))   $query->where('status', $request->status);
+        if ($request->filled('severity')) $query->where('severity', $request->severity);
+        if ($request->filled('student_id')) $query->where('student_id', $request->student_id);
+
+        $records  = $query->latest('incident_date')->paginate(20)->withQueryString();
+        $students = Student::where('school_id', $schoolId)->where('status', 'active')
+            ->orderBy('first_name')
+            ->get(['id', 'first_name', 'last_name', 'admission_no']);
+
+        $summary = [
+            'total'        => DisciplinaryRecord::where('school_id', $schoolId)->count(),
+            'open'         => DisciplinaryRecord::where('school_id', $schoolId)->where('status', 'open')->count(),
+            'this_month'   => DisciplinaryRecord::where('school_id', $schoolId)->whereMonth('incident_date', now()->month)->whereYear('incident_date', now()->year)->count(),
+            'major'        => DisciplinaryRecord::where('school_id', $schoolId)->where('severity', 'major')->count(),
+        ];
+
+        return Inertia::render('School/Disciplinary/Index', [
+            'records'  => $records,
+            'students' => $students,
+            'summary'  => $summary,
+            'filters'  => $request->only('status', 'severity', 'student_id'),
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $schoolId  = app('current_school_id');
+        $validated = $request->validate([
+            'student_id'      => ['required', Rule::exists('students', 'id')->where('school_id', $schoolId)],
+            'incident_date'   => 'required|date',
+            'category'        => 'required|string|max:100',
+            'severity'        => 'required|in:minor,moderate,major',
+            'description'     => 'required|string',
+            'action_taken'    => 'nullable|string',
+            'consequence'     => 'nullable|in:warning,detention,parent_call,suspension,expulsion,none',
+            'consequence_from'=> 'nullable|date',
+            'consequence_to'  => 'nullable|date|after_or_equal:consequence_from',
+            'student_statement'=> 'nullable|string',
+            'notes'           => 'nullable|string',
+        ]);
+
+        DisciplinaryRecord::create(array_merge($validated, [
+            'school_id'   => $schoolId,
+            'reported_by' => auth()->id(),
+            'status'      => 'open',
+        ]));
+
+        return back()->with('success', 'Disciplinary record created.');
+    }
+
+    public function update(Request $request, DisciplinaryRecord $disciplinaryRecord)
+    {
+        abort_if($disciplinaryRecord->school_id !== app('current_school_id'), 403);
+
+        $validated = $request->validate([
+            'incident_date'   => 'required|date',
+            'category'        => 'required|string|max:100',
+            'severity'        => 'required|in:minor,moderate,major',
+            'description'     => 'required|string',
+            'action_taken'    => 'nullable|string',
+            'status'          => 'required|in:open,under_review,resolved,escalated',
+            'consequence'     => 'nullable|in:warning,detention,parent_call,suspension,expulsion,none',
+            'consequence_from'=> 'nullable|date',
+            'consequence_to'  => 'nullable|date|after_or_equal:consequence_from',
+            'parent_notified' => 'boolean',
+            'student_statement'=> 'nullable|string',
+            'notes'           => 'nullable|string',
+        ]);
+
+        if ($validated['parent_notified'] && !$disciplinaryRecord->parent_notified) {
+            $validated['parent_notified_at'] = now()->toDateString();
+        }
+
+        if ($request->filled('reviewed_by') || in_array($validated['status'], ['resolved', 'escalated'])) {
+            $validated['reviewed_by'] = auth()->id();
+        }
+
+        $disciplinaryRecord->update($validated);
+
+        return back()->with('success', 'Record updated.');
+    }
+
+    public function destroy(DisciplinaryRecord $disciplinaryRecord)
+    {
+        abort_if($disciplinaryRecord->school_id !== app('current_school_id'), 403);
+        $disciplinaryRecord->delete();
+        return back()->with('success', 'Record deleted.');
+    }
+
+    // Student-specific history
+    public function studentHistory(Request $request, Student $student)
+    {
+        abort_if($student->school_id !== app('current_school_id'), 403);
+
+        $records = DisciplinaryRecord::where('school_id', app('current_school_id'))
+            ->where('student_id', $student->id)
+            ->with('reportedBy', 'reviewedBy')
+            ->latest('incident_date')
+            ->get();
+
+        return response()->json($records);
+    }
+}

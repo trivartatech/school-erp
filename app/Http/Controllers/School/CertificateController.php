@@ -244,6 +244,48 @@ class CertificateController extends Controller
         ]);
     }
 
+    // ── Issue a certificate (creates a verifiable record) ────────────
+
+    public function issue(Request $request, CertificateTemplate $certificateTemplate)
+    {
+        abort_if($certificateTemplate->school_id !== app('current_school_id'), 403);
+
+        $validated = $request->validate([
+            'student_id'     => ['required', 'exists:students,id'],
+            'issued_date'    => 'required|date',
+            'custom_vals'    => 'nullable|array',
+        ]);
+
+        $issuance = \App\Models\CertificateIssuance::create([
+            'school_id'   => app('current_school_id'),
+            'template_id' => $certificateTemplate->id,
+            'student_id'  => $validated['student_id'],
+            'issued_date' => $validated['issued_date'],
+            'custom_vals' => $validated['custom_vals'] ?? [],
+            'issued_by'   => auth()->id(),
+        ]);
+
+        return response()->json([
+            'token'            => $issuance->verification_token,
+            'verification_url' => route('certificate.verify-public', $issuance->verification_token),
+        ]);
+    }
+
+    // ── Issued certificates list ─────────────────────────────────────
+
+    public function issued(CertificateTemplate $certificateTemplate)
+    {
+        abort_if($certificateTemplate->school_id !== app('current_school_id'), 403);
+
+        $issuances = \App\Models\CertificateIssuance::where('school_id', app('current_school_id'))
+            ->where('template_id', $certificateTemplate->id)
+            ->with(['student', 'issuedBy'])
+            ->latest()
+            ->get();
+
+        return response()->json($issuances);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────
 
     private function schoolData(): array
