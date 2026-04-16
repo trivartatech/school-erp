@@ -148,6 +148,16 @@ Route::middleware('auth')->group(function () {
         Route::get('utility/id-cards/{idCardTemplate}/generate', [\App\Http\Controllers\School\IdCardController::class, 'generate'])->name('utility.id-cards.generate');
         Route::get('utility/id-cards/{idCardTemplate}/print', [\App\Http\Controllers\School\IdCardController::class, 'print'])->name('utility.id-cards.print');
 
+        // Certificates
+        Route::get('utility/certificates', [\App\Http\Controllers\School\CertificateController::class, 'index'])->name('utility.certificates');
+        Route::get('utility/certificates/create', [\App\Http\Controllers\School\CertificateController::class, 'create'])->name('utility.certificates.create');
+        Route::post('utility/certificates', [\App\Http\Controllers\School\CertificateController::class, 'store'])->name('utility.certificates.store');
+        Route::get('utility/certificates/{certificateTemplate}/edit', [\App\Http\Controllers\School\CertificateController::class, 'edit'])->name('utility.certificates.edit');
+        Route::put('utility/certificates/{certificateTemplate}', [\App\Http\Controllers\School\CertificateController::class, 'update'])->name('utility.certificates.update');
+        Route::delete('utility/certificates/{certificateTemplate}', [\App\Http\Controllers\School\CertificateController::class, 'destroy'])->name('utility.certificates.destroy');
+        Route::get('utility/certificates/{certificateTemplate}/generate', [\App\Http\Controllers\School\CertificateController::class, 'generate'])->name('utility.certificates.generate');
+        Route::get('utility/certificates/{certificateTemplate}/print', [\App\Http\Controllers\School\CertificateController::class, 'print'])->name('utility.certificates.print');
+
         Route::post('switch-academic-year', function (\Illuminate\Http\Request $request) {
             $request->validate(['academic_year_id' => 'required|exists:academic_years,id']);
             

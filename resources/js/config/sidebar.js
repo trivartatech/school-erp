@@ -327,8 +327,9 @@ export const SIDEBAR_MENU = [
         permission: 'view_settings',
         icon: `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.628.282a2 2 0 01-1.154 0l-.628-.282a6 6 0 00-3.86-.517l-2.387.477.1.1a2 2 0 001.022.547l2.387.477a6 6 0 003.86-.517l.628-.282a2 2 0 011.154 0l.628.282a6 6 0 003.86.517l2.387-.477z" />`,
         children: [
-            { title: 'ID Cards',     route: '/school/utility/id-cards',     permission: 'view_students' },
-            { title: 'Activity Log', route: '/school/utility/activity-log', permission: 'view_settings' },
+            { title: 'ID Cards',     route: '/school/utility/id-cards',        permission: 'view_students' },
+            { title: 'Certificates', route: '/school/utility/certificates',    permission: 'view_students' },
+            { title: 'Activity Log', route: '/school/utility/activity-log',    permission: 'view_settings' },
             { title: 'Error Log',    route: '/school/utility/error-log',    permission: 'view_settings' },
         ],
     },
