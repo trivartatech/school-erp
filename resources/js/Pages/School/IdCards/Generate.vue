@@ -11,46 +11,73 @@ const props = defineProps({
 
 const selectedClass   = ref('');
 const selectedSection = ref('');
+const selectedStudent = ref('');
 const columnsOverride = ref(props.template.columns ?? 2);
 
-const { sections, isFetching, fetchSections } = useClassSections();
-watch(selectedClass, val => { selectedSection.value = ''; fetchSections(val); });
+const { sections, isFetching: fetchingSections, fetchSections } = useClassSections();
 
+// ── Students list ─────────────────────────────────────────────────
+const students       = ref([]);
+const fetchingStudents = ref(false);
+
+const fetchStudents = async (classId, sectionId) => {
+    if (!classId) { students.value = []; return; }
+    fetchingStudents.value = true;
+    try {
+        const p = new URLSearchParams();
+        p.set('class_id', classId);
+        if (sectionId) p.set('section_id', sectionId);
+        const res = await fetch(`/school/utility/students-quick?${p}`);
+        students.value = await res.json();
+    } catch { students.value = []; }
+    finally { fetchingStudents.value = false; }
+};
+
+watch(selectedClass, val => {
+    selectedSection.value = '';
+    selectedStudent.value = '';
+    students.value = [];
+    fetchSections(val);
+    if (val) fetchStudents(val, '');
+});
+
+watch(selectedSection, val => {
+    selectedStudent.value = '';
+    fetchStudents(selectedClass.value, val);
+});
+
+// ── Print URL ─────────────────────────────────────────────────────
 const printUrl = computed(() => {
     const base = `/school/utility/id-cards/${props.template.id}/print`;
-    const p = new URLSearchParams();
+    const p    = new URLSearchParams();
     if (selectedClass.value)   p.set('class_id',   selectedClass.value);
     if (selectedSection.value) p.set('section_id', selectedSection.value);
+    if (selectedStudent.value) p.set('student_id', selectedStudent.value);
     if (columnsOverride.value !== props.template.columns) p.set('columns', columnsOverride.value);
     const qs = p.toString();
     return qs ? `${base}?${qs}` : base;
 });
 
-const generate = () => {
-    window.open(printUrl.value, '_blank');
-};
+const generate = () => window.open(printUrl.value, '_blank');
 
 const orientationLabel = props.template.orientation === 'portrait' ? 'Portrait' : 'Landscape';
 </script>
 
 <template>
     <Head :title="`Generate – ${template.name}`" />
-    <SchoolLayout :title="`Generate ID Cards`">
+    <SchoolLayout title="Generate ID Cards">
 
         <div class="max-w-lg mx-auto">
 
-            <!-- Back -->
             <a href="/school/utility/id-cards"
                class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-5">
                 ← Back to Templates
             </a>
 
-            <!-- Template info card -->
+            <!-- Template info -->
             <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
                 <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-100 text-blue-600 text-2xl flex-shrink-0">
-                        🪪
-                    </div>
+                    <div class="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-100 text-blue-600 text-2xl flex-shrink-0">🪪</div>
                     <div>
                         <h2 class="font-semibold text-slate-800">{{ template.name }}</h2>
                         <p class="text-xs text-slate-500 mt-0.5">
@@ -82,17 +109,34 @@ const orientationLabel = props.template.orientation === 'portrait' ? 'Portrait' 
                 <div>
                     <label class="block text-xs font-medium text-slate-600 mb-1">Section</label>
                     <select v-model="selectedSection"
-                            :disabled="!selectedClass || isFetching || !sections.length"
+                            :disabled="!selectedClass || fetchingSections || !sections.length"
                             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400">
                         <option value="">All sections</option>
                         <option v-for="sec in sections" :key="sec.id" :value="sec.id">{{ sec.name }}</option>
                     </select>
-                    <p v-if="isFetching" class="text-xs text-slate-400 mt-1">Loading sections…</p>
                 </div>
 
-                <!-- Columns override -->
+                <!-- Specific student -->
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Cards per row (print)</label>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Specific Student
+                        <span class="text-slate-400 font-normal">(optional)</span>
+                    </label>
+                    <select v-model="selectedStudent"
+                            :disabled="!selectedClass || fetchingStudents"
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400">
+                        <option value="">All students{{ students.length ? ` (${students.length})` : '' }}</option>
+                        <option v-for="s in students" :key="s.id" :value="s.id">
+                            {{ s.name }} — {{ s.admission_no }}
+                        </option>
+                    </select>
+                    <p v-if="fetchingStudents" class="text-xs text-slate-400 mt-1">Loading students…</p>
+                    <p v-else-if="selectedClass && !students.length && !fetchingStudents"
+                       class="text-xs text-slate-400 mt-1">No active students found.</p>
+                </div>
+
+                <!-- Columns per page -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Cards per row</label>
                     <div class="flex gap-2">
                         <button v-for="n in [1, 2, 4]" :key="n"
                                 @click="columnsOverride = n"
@@ -103,21 +147,15 @@ const orientationLabel = props.template.orientation === 'portrait' ? 'Portrait' 
                             {{ n }}
                         </button>
                     </div>
-                    <p class="text-xs text-slate-400 mt-1">
-                        1 = one large card per page, 2 = standard CR80 size, 4 = small
-                    </p>
                 </div>
             </div>
 
-            <!-- Generate button -->
             <button @click="generate"
                     class="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl transition-colors">
                 Generate &amp; Print ID Cards
             </button>
-
             <p class="text-xs text-slate-400 text-center mt-2">Opens in a new tab &bull; Use browser print (Ctrl+P)</p>
 
         </div>
-
     </SchoolLayout>
 </template>

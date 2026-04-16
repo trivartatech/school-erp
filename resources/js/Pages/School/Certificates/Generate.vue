@@ -11,26 +11,55 @@ const props = defineProps({
 
 const selectedClass   = ref('');
 const selectedSection = ref('');
+const selectedStudent = ref('');
 
-// Custom variable values (keyed by var.key)
 const customVals = ref(
     Object.fromEntries((props.template.custom_vars ?? []).map(v => [v.key, '']))
 );
 
-// Certificate date (defaults to today)
-const today = new Date().toISOString().slice(0, 10);
+const today    = new Date().toISOString().slice(0, 10);
 const certDate = ref(today);
 
-const { sections, isFetching, fetchSections } = useClassSections();
-watch(selectedClass, val => { selectedSection.value = ''; fetchSections(val); });
+const { sections, isFetching: fetchingSections, fetchSections } = useClassSections();
 
+// ── Students list ─────────────────────────────────────────────────
+const students         = ref([]);
+const fetchingStudents = ref(false);
+
+const fetchStudents = async (classId, sectionId) => {
+    if (!classId) { students.value = []; return; }
+    fetchingStudents.value = true;
+    try {
+        const p = new URLSearchParams();
+        p.set('class_id', classId);
+        if (sectionId) p.set('section_id', sectionId);
+        const res = await fetch(`/school/utility/students-quick?${p}`);
+        students.value = await res.json();
+    } catch { students.value = []; }
+    finally { fetchingStudents.value = false; }
+};
+
+watch(selectedClass, val => {
+    selectedSection.value = '';
+    selectedStudent.value = '';
+    students.value = [];
+    fetchSections(val);
+    if (val) fetchStudents(val, '');
+});
+
+watch(selectedSection, val => {
+    selectedStudent.value = '';
+    fetchStudents(selectedClass.value, val);
+});
+
+// ── Print URL ─────────────────────────────────────────────────────
 const printUrl = computed(() => {
     const base = `/school/utility/certificates/${props.template.id}/print`;
     const p    = new URLSearchParams();
     if (selectedClass.value)   p.set('class_id',   selectedClass.value);
     if (selectedSection.value) p.set('section_id', selectedSection.value);
+    if (selectedStudent.value) p.set('student_id', selectedStudent.value);
     if (certDate.value)        p.set('cert_date',  certDate.value);
-    // Add custom var values
     for (const [key, val] of Object.entries(customVals.value)) {
         if (val) p.set(key, val);
     }
@@ -82,9 +111,9 @@ const orientationLabel = props.template.orientation === 'portrait' ? 'Portrait A
                 </div>
             </div>
 
-            <!-- Certificate date + filters -->
+            <!-- Date + Filters -->
             <div class="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-                <h3 class="text-sm font-semibold text-slate-700">Certificate Date &amp; Students</h3>
+                <h3 class="text-sm font-semibold text-slate-700">Date &amp; Students</h3>
 
                 <!-- Date -->
                 <div>
@@ -95,7 +124,9 @@ const orientationLabel = props.template.orientation === 'portrait' ? 'Portrait A
 
                 <!-- Class -->
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Class <span class="text-slate-400 font-normal">(optional — leave blank for all)</span></label>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">
+                        Class <span class="text-slate-400 font-normal">(leave blank for all)</span>
+                    </label>
                     <select v-model="selectedClass"
                             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <option value="">All classes</option>
@@ -107,21 +138,37 @@ const orientationLabel = props.template.orientation === 'portrait' ? 'Portrait A
                 <div>
                     <label class="block text-xs font-medium text-slate-600 mb-1">Section</label>
                     <select v-model="selectedSection"
-                            :disabled="!selectedClass || isFetching || !sections.length"
+                            :disabled="!selectedClass || fetchingSections || !sections.length"
                             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400">
                         <option value="">All sections</option>
                         <option v-for="sec in sections" :key="sec.id" :value="sec.id">{{ sec.name }}</option>
                     </select>
-                    <p v-if="isFetching" class="text-xs text-slate-400 mt-1">Loading sections…</p>
+                </div>
+
+                <!-- Specific student -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">
+                        Specific Student <span class="text-slate-400 font-normal">(optional)</span>
+                    </label>
+                    <select v-model="selectedStudent"
+                            :disabled="!selectedClass || fetchingStudents"
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400">
+                        <option value="">All students{{ students.length ? ` (${students.length})` : '' }}</option>
+                        <option v-for="s in students" :key="s.id" :value="s.id">
+                            {{ s.name }} — {{ s.admission_no }}
+                        </option>
+                    </select>
+                    <p v-if="fetchingStudents" class="text-xs text-slate-400 mt-1">Loading students…</p>
+                    <p v-else-if="selectedClass && !students.length && !fetchingStudents"
+                       class="text-xs text-slate-400 mt-1">No active students found.</p>
                 </div>
             </div>
 
-            <!-- Generate button -->
             <button @click="generate"
                     class="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl transition-colors">
                 Generate &amp; Print Certificates
             </button>
-            <p class="text-xs text-slate-400 text-center mt-2">Opens in a new tab &bull; One A4 certificate per student</p>
+            <p class="text-xs text-slate-400 text-center mt-2">Opens in a new tab &bull; One A4 per student</p>
 
         </div>
     </SchoolLayout>

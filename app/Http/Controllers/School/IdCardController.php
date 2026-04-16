@@ -183,6 +183,10 @@ class IdCardController extends Controller
             });
         }
 
+        if ($request->filled('student_id')) {
+            $query->where('id', $request->student_id);
+        }
+
         $students = $query->orderBy('first_name')->get()->map(function ($s) {
             $h = $s->currentAcademicHistory;
             return [

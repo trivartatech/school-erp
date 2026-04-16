@@ -136,6 +136,27 @@ Route::middleware('auth')->group(function () {
         // Mobile App QR Code — generate scannable QR for EduConnect app onboarding
         Route::get('settings/mobile-qr', [\App\Http\Controllers\School\MobileQrController::class, 'index'])->name('settings.mobile-qr');
 
+        // Shared utility: quick student list for ID-card / certificate generate dropdowns
+        Route::get('utility/students-quick', function (\Illuminate\Http\Request $request) {
+            $schoolId       = app('current_school_id');
+            $academicYearId = app()->bound('current_academic_year_id') ? app('current_academic_year_id') : null;
+
+            $query = \App\Models\Student::where('school_id', $schoolId)
+                ->where('status', 'active')
+                ->orderBy('first_name');
+
+            if ($request->filled('class_id') || $request->filled('section_id')) {
+                $query->whereHas('currentAcademicHistory', function ($q) use ($request, $academicYearId) {
+                    $q->where('academic_year_id', $academicYearId)->where('status', 'current');
+                    if ($request->filled('class_id'))   $q->where('class_id',   $request->class_id);
+                    if ($request->filled('section_id')) $q->where('section_id', $request->section_id);
+                });
+            }
+
+            return $query->limit(300)->get(['id', 'first_name', 'last_name', 'admission_no'])
+                ->map(fn ($s) => ['id' => $s->id, 'name' => trim("{$s->first_name} {$s->last_name}"), 'admission_no' => $s->admission_no]);
+        })->name('utility.students-quick');
+
         // Utility
         Route::get('utility/activity-log', [\App\Http\Controllers\School\ActivityLogController::class, 'index'])->name('utility.activity-log');
         Route::get('utility/error-log', [\App\Http\Controllers\School\ErrorLogController::class, 'index'])->name('utility.error-log');
