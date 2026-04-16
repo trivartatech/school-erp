@@ -123,7 +123,10 @@ class AnalyticsDashboardController extends Controller
             ->join('exam_schedules as es',           'es.id',  '=', 'ess.exam_schedule_id')
             ->join('student_academic_histories as h','h.student_id', '=', 'em.student_id')
             ->join('course_classes as c',             'c.id',   '=', 'h.class_id')
-            ->join('exam_assessment_items as eai',    'eai.id', '=', 'em.exam_assessment_item_id')
+            ->leftJoin('exam_schedule_subject_marks as essm', function ($j) {
+                $j->on('essm.exam_schedule_subject_id', '=', 'em.exam_schedule_subject_id')
+                  ->on('essm.exam_assessment_item_id',  '=', 'em.exam_assessment_item_id');
+            })
             ->where('em.school_id', $schoolId)
             ->where('em.is_absent', false)
             ->when($academicYearId, fn($q) => $q->where('em.academic_year_id', $academicYearId)
@@ -131,9 +134,9 @@ class AnalyticsDashboardController extends Controller
             ->select(
                 'c.name as class',
                 'c.sort_order',
-                DB::raw('AVG(em.marks_obtained / NULLIF(eai.max_marks, 0) * 100) as avg_pct'),
+                DB::raw('AVG(em.marks_obtained / NULLIF(essm.max_marks, 0) * 100) as avg_pct'),
                 DB::raw('COUNT(DISTINCT em.student_id) as students'),
-                DB::raw('SUM(CASE WHEN em.marks_obtained >= eai.pass_marks THEN 1 ELSE 0 END) as passed'),
+                DB::raw('SUM(CASE WHEN em.marks_obtained >= essm.passing_marks THEN 1 ELSE 0 END) as passed'),
                 DB::raw('COUNT(*) as total_marks')
             )
             ->groupBy('c.id', 'c.name', 'c.sort_order')
