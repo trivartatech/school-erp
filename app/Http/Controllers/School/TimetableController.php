@@ -87,7 +87,7 @@ class TimetableController extends Controller
                 ->first();
 
             if ($clash) {
-                $staffName = $clash->staff->user->name ?? 'Unknown Teacher';
+                $staffName = $clash->staff?->user?->name ?? 'Unknown Teacher';
                 $periodName = $clash->period->name ?? "Period {$item['period_id']}";
                 $dayName = $days[$item['day_of_week']] ?? $item['day_of_week'];
                 $sectionName = $clash->section->name ?? 'another section';

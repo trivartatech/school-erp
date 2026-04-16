@@ -49,7 +49,7 @@ class RollNumberController extends Controller
                 $query->where('section_id', $sectionId);
             }
 
-            $students = $query->get()->map(function ($h) {
+            $students = $query->get()->filter(fn($h) => $h->student !== null)->map(function ($h) {
                 return [
                     'history_id'   => $h->id,
                     'student_id'   => $h->student_id,

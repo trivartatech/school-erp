@@ -230,7 +230,7 @@ class TransferCertificateController extends Controller
         ]);
 
         // Mark student as TC in the students table
-        $transferCertificate->student->update(['status' => 'tc']);
+        $transferCertificate->student?->update(['status' => 'tc']);
 
         return back()->with('success', "TC issued successfully. Certificate No: {$certNo}");
     }

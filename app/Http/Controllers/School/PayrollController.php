@@ -277,7 +277,7 @@ class PayrollController extends Controller
             'unpaidDed'  => $payroll->unpaid_leave_deduction ?? 0,
         ])->setPaper('A4', 'portrait');
 
-        $filename = 'Payslip_' . str_replace(' ', '_', $payroll->staff->user->name) . '_' . $months[$payroll->month] . '_' . $payroll->year . '.pdf';
+        $filename = 'Payslip_' . str_replace(' ', '_', $payroll->staff?->user?->name ?? 'Staff') . '_' . $months[$payroll->month] . '_' . $payroll->year . '.pdf';
 
         return $pdf->download($filename);
     }

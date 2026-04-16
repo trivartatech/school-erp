@@ -63,8 +63,8 @@ class TransportAttendanceController extends Controller
             $att = $existing->get($alloc->student_id);
             return [
                 'student_id'   => $alloc->student_id,
-                'name'         => $alloc->student->user->name ?? '—',
-                'admission_no' => $alloc->student->admission_no,
+                'name'         => $alloc->student?->user?->name ?? '—',
+                'admission_no' => $alloc->student?->admission_no ?? '—',
                 'stop_name'    => $alloc->stop->stop_name ?? '—',
                 'stop_order'   => $alloc->stop->stop_order ?? 0,
                 'vehicle_id'   => $alloc->vehicle_id,

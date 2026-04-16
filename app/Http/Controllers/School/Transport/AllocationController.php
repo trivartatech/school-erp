@@ -137,7 +137,7 @@ class AllocationController extends Controller
         // Let's just return all students in the class/section and let the user decide.
         // It might be helpful to exclude existing allocations, but for now we list all.
 
-        $students = $query->get()->map(function($h) {
+        $students = $query->get()->filter(fn($h) => $h->student !== null)->map(function($h) {
             return [
                 'id' => $h->student_id,
                 'name' => trim(($h->student->first_name ?? '') . ' ' . ($h->student->last_name ?? '')),
