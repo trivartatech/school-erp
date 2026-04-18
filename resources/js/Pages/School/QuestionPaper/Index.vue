@@ -97,7 +97,7 @@ const DIFFICULTY_LABEL = {
 
         <!-- Papers Table -->
         <div class="card" style="overflow:hidden;">
-            <Table :empty="!papers.length" empty-text="No question papers yet. Click "Generate New Paper" to create one.">
+            <Table :empty="!papers.length" empty-text="No question papers yet. Click Generate New Paper to create one.">
                 <thead>
                     <tr>
                         <th>Title</th>
