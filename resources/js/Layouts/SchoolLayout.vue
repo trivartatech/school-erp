@@ -810,9 +810,10 @@ body {
     height: 1px;
     background: linear-gradient(90deg, var(--accent), #8b5cf6, transparent);
 }
-.erp-sidebar::-webkit-scrollbar { width: 3px; }
-.erp-sidebar::-webkit-scrollbar-track { background: transparent; }
-.erp-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.erp-sidebar::-webkit-scrollbar { width: 6px; }
+.erp-sidebar::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 3px; }
+.erp-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 3px; }
+.erp-sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
 
 /* ── Brand ── */
 .sidebar-brand {
