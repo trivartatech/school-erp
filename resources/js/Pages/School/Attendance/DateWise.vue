@@ -135,8 +135,8 @@ const STATUS_COLOR = { present: '#22c55e', absent: '#ef4444', late: '#eab308', h
 
         <!-- Table -->
         <div v-if="report.length > 0" class="card" style="overflow:hidden;">
-            <div v-if="selectedClassId" class="hint-bar">
-                Click a row to expand student-level detail for that date.
+            <div class="hint-bar">
+                Click any row to see class-wise breakdown for that date.
             </div>
             <div class="table-wrap">
                 <table class="dw-table">
@@ -151,14 +151,14 @@ const STATUS_COLOR = { present: '#22c55e', absent: '#ef4444', late: '#eab308', h
                             <th class="col-num col-blue">Leave</th>
                             <th class="col-num col-warn">Unmarked</th>
                             <th class="col-num">Attend. %</th>
-                            <th v-if="selectedClassId" style="width:32px;"></th>
+                            <th style="width:32px;"></th>
                         </tr>
                     </thead>
                     <tbody>
                         <template v-for="row in report" :key="row.date">
                             <tr
-                                :class="['dw-row', selectedClassId ? 'dw-row-clickable' : '', expanded === row.date ? 'dw-row-expanded' : '']"
-                                @click="selectedClassId ? toggle(row.date) : null"
+                                :class="['dw-row dw-row-clickable', expanded === row.date ? 'dw-row-expanded' : '']"
+                                @click="toggle(row.date)"
                             >
                                 <td class="date-cell">{{ row.date }}</td>
                                 <td class="day-cell">{{ row.day }}</td>
@@ -177,42 +177,57 @@ const STATUS_COLOR = { present: '#22c55e', absent: '#ef4444', late: '#eab308', h
                                     </span>
                                     <span v-else class="muted">—</span>
                                 </td>
-                                <td v-if="selectedClassId" class="expand-cell">
+                                <td class="expand-cell">
                                     <svg :style="{ transform: expanded === row.date ? 'rotate(180deg)' : '', transition: 'transform .2s' }" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                                     </svg>
                                 </td>
                             </tr>
 
-                            <!-- Student detail panel -->
-                            <tr v-if="selectedClassId && expanded === row.date" :key="row.date + '_d'" class="detail-row">
-                                <td :colspan="selectedClassId ? 10 : 9" style="padding:0;">
+                            <!-- Class-wise breakdown panel -->
+                            <tr v-if="expanded === row.date" :key="row.date + '_d'" class="detail-row">
+                                <td colspan="10" style="padding:0;">
                                     <div class="detail-panel">
-                                        <div v-if="row.students.length === 0" class="detail-empty">
-                                            No student records for this date.
+                                        <div v-if="!row.breakdown || row.breakdown.length === 0" class="detail-empty">
+                                            No class-wise data available.
                                         </div>
-                                        <div v-else class="student-chips">
-                                            <div
-                                                v-for="(s, i) in row.students"
-                                                :key="i"
-                                                class="student-chip"
-                                            >
-                                                <span
-                                                    class="status-badge"
-                                                    :style="{ background: STATUS_COLOR[s.status] || '#94a3b8' }"
-                                                >{{ STATUS_LABEL[s.status] || s.status }}</span>
-                                                <span class="chip-name">{{ s.name }}</span>
-                                                <span class="chip-adm">{{ s.admission_no }}</span>
-                                                <span v-if="s.remarks" class="chip-remark" :title="s.remarks">{{ s.remarks }}</span>
-                                            </div>
-                                        </div>
-                                        <!-- Mini legend -->
-                                        <div class="detail-legend">
-                                            <span v-for="(color, key) in STATUS_COLOR" :key="key" class="legend-item">
-                                                <span class="legend-dot" :style="{ background: color }"></span>
-                                                {{ STATUS_LABEL[key] }} = {{ key.replace('_', ' ') }}
-                                            </span>
-                                        </div>
+                                        <template v-else>
+                                            <div class="breakdown-header">Class-wise breakdown — {{ row.date }} ({{ row.day }})</div>
+                                            <table class="breakdown-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th class="bth-class">Class</th>
+                                                        <th class="bth-num" style="color:#10b981;">Present</th>
+                                                        <th class="bth-num" style="color:#ef4444;">Absent</th>
+                                                        <th class="bth-num" style="color:#eab308;">Late</th>
+                                                        <th class="bth-num" style="color:#f97316;">Half Day</th>
+                                                        <th class="bth-num" style="color:#3b82f6;">Leave</th>
+                                                        <th class="bth-num" style="color:#f59e0b;">Unmarked</th>
+                                                        <th class="bth-num">Attend. %</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="cls in row.breakdown" :key="cls.class_name" class="breakdown-row">
+                                                        <td class="bcell-class">{{ cls.class_name }}</td>
+                                                        <td class="bcell-num"><span class="badge badge-green">{{ cls.present }}</span></td>
+                                                        <td class="bcell-num"><span class="badge badge-red">{{ cls.absent }}</span></td>
+                                                        <td class="bcell-num"><span v-if="cls.late" class="badge badge-amber">{{ cls.late }}</span><span v-else class="muted">—</span></td>
+                                                        <td class="bcell-num"><span v-if="cls.half_day" class="badge badge-orange">{{ cls.half_day }}</span><span v-else class="muted">—</span></td>
+                                                        <td class="bcell-num"><span v-if="cls.leave" class="badge badge-blue">{{ cls.leave }}</span><span v-else class="muted">—</span></td>
+                                                        <td class="bcell-num">
+                                                            <span v-if="cls.unmarked > 0" class="badge badge-warn">{{ cls.unmarked }}</span>
+                                                            <span v-else class="muted">—</span>
+                                                        </td>
+                                                        <td class="bcell-num">
+                                                            <span v-if="cls.pct !== null" class="pct-badge" :style="{ background: pctColor(cls.pct) + '22', color: pctColor(cls.pct), border: '1px solid ' + pctColor(cls.pct) + '55' }">
+                                                                {{ cls.pct }}%
+                                                            </span>
+                                                            <span v-else class="muted">—</span>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </template>
                                     </div>
                                 </td>
                             </tr>
@@ -324,50 +339,56 @@ const STATUS_COLOR = { present: '#22c55e', absent: '#ef4444', late: '#eab308', h
     font-weight: 700;
 }
 
-/* Detail panel */
-.detail-row td { background: #f8fafc; }
-.detail-panel  { padding: 14px 16px; }
-.detail-empty  { font-size: 0.8125rem; color: #94a3b8; }
-.student-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.student-chip  {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 0.8125rem;
-}
-.status-badge {
-    color: #fff;
-    border-radius: 4px;
-    padding: 1px 5px;
-    font-size: 0.68rem;
+/* Detail / breakdown panel */
+.detail-row td  { background: #f0f9ff; }
+.detail-panel   { padding: 12px 16px 16px; }
+.detail-empty   { font-size: 0.8125rem; color: #94a3b8; padding: 8px 0; }
+
+.breakdown-header {
+    font-size: 0.78rem;
     font-weight: 700;
-    letter-spacing: .03em;
+    color: #0369a1;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 10px;
 }
-.chip-name  { font-weight: 500; color: #1e293b; }
-.chip-adm   { color: #94a3b8; font-size: 0.75rem; }
-.chip-remark {
-    color: #64748b;
-    font-size: 0.72rem;
-    font-style: italic;
-    max-width: 100px;
+
+.breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    background: #fff;
+    border-radius: 8px;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
-.detail-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px solid #f1f5f9;
+.breakdown-table thead tr { background: #f8fafc; }
+.bth-class {
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    border-bottom: 1px solid #e2e8f0;
+    min-width: 100px;
 }
-.legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b; }
-.legend-dot  { width: 8px; height: 8px; border-radius: 50%; }
+.bth-num {
+    padding: 8px 10px;
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    border-bottom: 1px solid #e2e8f0;
+    width: 72px;
+}
+.breakdown-row { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
+.breakdown-row:last-child { border-bottom: none; }
+.breakdown-row:hover { background: #f8fafc; }
+.bcell-class { padding: 8px 12px; font-weight: 600; color: #1e293b; }
+.bcell-num   { padding: 8px 10px; text-align: center; }
 
 .table-footer-note {
     padding: 8px 16px;

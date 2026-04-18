@@ -475,6 +475,9 @@ class AttendanceController extends Controller
             $enrolledCount = \App\Models\Student::where('school_id', $schoolId)->where('status', 'active')->count();
         }
 
+        // Normalize date helper — fixes "2026-04-10 00:00:00" datetime values from DB
+        $normDate = fn($d) => \Carbon\Carbon::parse($d)->toDateString();
+
         // Aggregate counts per date+status
         $records = Attendance::where('school_id', $schoolId)
             ->when($academicYearId, fn($q) => $q->where('academic_year_id', $academicYearId))
@@ -484,28 +487,47 @@ class AttendanceController extends Controller
             ->select('date', 'status', DB::raw('COUNT(*) as cnt'))
             ->groupBy('date', 'status')
             ->get()
-            ->groupBy(fn($r) => (string) $r->date)
+            ->groupBy(fn($r) => $normDate($r->date))
             ->sortKeysDesc();
 
-        // Per-student detail — only when a class is selected to keep payload small
-        $detailByDate = collect();
-        if ($classId) {
-            $detailByDate = Attendance::where('school_id', $schoolId)
-                ->when($academicYearId, fn($q) => $q->where('academic_year_id', $academicYearId))
-                ->where('class_id', $classId)
+        // Class-wise breakdown per date (for expandable dropdown)
+        $classBreakdownRaw = Attendance::where('school_id', $schoolId)
+            ->when($academicYearId, fn($q) => $q->where('academic_year_id', $academicYearId))
+            ->when($classId,   fn($q) => $q->where('class_id',   $classId))
+            ->when($sectionId, fn($q) => $q->where('section_id', $sectionId))
+            ->whereBetween('date', [$from, $to])
+            ->select('date', 'class_id', 'status', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('date', 'class_id', 'status')
+            ->get()
+            ->groupBy(fn($r) => $normDate($r->date))
+            ->map(fn($dateRows) =>
+                $dateRows->groupBy('class_id')->map(fn($classRows, $cid) => [
+                    'class_id' => (int) $cid,
+                    'present'  => (int) ($classRows->where('status', 'present')->first()?->cnt  ?? 0),
+                    'absent'   => (int) ($classRows->where('status', 'absent')->first()?->cnt   ?? 0),
+                    'late'     => (int) ($classRows->where('status', 'late')->first()?->cnt     ?? 0),
+                    'half_day' => (int) ($classRows->where('status', 'half_day')->first()?->cnt ?? 0),
+                    'leave'    => (int) ($classRows->where('status', 'leave')->first()?->cnt    ?? 0),
+                ])->values()
+            );
+
+        // Class names (all in school, ordered)
+        $classNameMap = CourseClass::where('school_id', $schoolId)
+            ->orderBy('sort_order')
+            ->pluck('name', 'id');
+
+        // Per-class enrollment for unmarked + % in breakdown
+        $classEnrollment = $academicYearId
+            ? StudentAcademicHistory::where('school_id', $schoolId)
+                ->where('academic_year_id', $academicYearId)
+                ->when($classId,   fn($q) => $q->where('class_id',   $classId))
                 ->when($sectionId, fn($q) => $q->where('section_id', $sectionId))
-                ->whereBetween('date', [$from, $to])
-                ->with('student:id,first_name,last_name,admission_no')
-                ->orderBy('date', 'desc')
-                ->get(['student_id', 'date', 'status', 'remarks'])
-                ->groupBy(fn($r) => (string) $r->date)
-                ->map(fn($rows) => $rows->sortBy(fn($r) => $r->student?->first_name)->map(fn($r) => [
-                    'name'         => trim(($r->student->first_name ?? '') . ' ' . ($r->student->last_name ?? '')),
-                    'admission_no' => $r->student->admission_no ?? '',
-                    'status'       => $r->status,
-                    'remarks'      => $r->remarks,
-                ])->values());
-        }
+                ->where('status', 'current')
+                ->selectRaw('class_id, COUNT(*) as enrolled')
+                ->groupBy('class_id')
+                ->pluck('enrolled', 'class_id')
+                ->toArray()
+            : [];
 
         $report = [];
         foreach ($records as $date => $rows) {
@@ -518,19 +540,38 @@ class AttendanceController extends Controller
             $marked           = array_sum($counts);
             $effectivePresent = $counts['present'] + ($counts['late'] * 0.5) + ($counts['half_day'] * 0.5);
 
+            // Build class-wise breakdown for this date
+            $breakdown = ($classBreakdownRaw->get($date) ?? collect())
+                ->map(fn($c) => [
+                    'class_name' => $classNameMap[$c['class_id']] ?? ('Class ' . $c['class_id']),
+                    'present'    => $c['present'],
+                    'absent'     => $c['absent'],
+                    'late'       => $c['late'],
+                    'half_day'   => $c['half_day'],
+                    'leave'      => $c['leave'],
+                    'enrolled'   => (int) ($classEnrollment[$c['class_id']] ?? 0),
+                    'unmarked'   => max(0, ($classEnrollment[$c['class_id']] ?? 0) - ($c['present'] + $c['absent'] + $c['late'] + $c['half_day'] + $c['leave'])),
+                    'pct'        => ($classEnrollment[$c['class_id']] ?? 0) > 0
+                        ? round(($c['present'] + $c['late'] * 0.5 + $c['half_day'] * 0.5) / $classEnrollment[$c['class_id']] * 100, 1)
+                        : null,
+                ])
+                ->sortBy('class_name')
+                ->values()
+                ->all();
+
             $report[] = [
-                'date'     => $date,
-                'day'      => \Carbon\Carbon::parse($date)->format('D'),
-                'present'  => $counts['present'],
-                'absent'   => $counts['absent'],
-                'late'     => $counts['late'],
-                'half_day' => $counts['half_day'],
-                'leave'    => $counts['leave'],
-                'marked'   => $marked,
-                'unmarked' => max(0, $enrolledCount - $marked),
-                'total'    => $enrolledCount,
-                'pct'      => $enrolledCount > 0 ? round($effectivePresent / $enrolledCount * 100, 1) : null,
-                'students' => $detailByDate->get($date, collect())->values()->all(),
+                'date'      => $date,
+                'day'       => \Carbon\Carbon::parse($date)->format('D'),
+                'present'   => $counts['present'],
+                'absent'    => $counts['absent'],
+                'late'      => $counts['late'],
+                'half_day'  => $counts['half_day'],
+                'leave'     => $counts['leave'],
+                'marked'    => $marked,
+                'unmarked'  => max(0, $enrolledCount - $marked),
+                'total'     => $enrolledCount,
+                'pct'       => $enrolledCount > 0 ? round($effectivePresent / $enrolledCount * 100, 1) : null,
+                'breakdown' => $breakdown,
             ];
         }
 
