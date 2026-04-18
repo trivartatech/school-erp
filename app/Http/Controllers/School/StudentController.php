@@ -16,6 +16,7 @@ use App\Models\TransportStop;
 use App\Models\TransportStudentAllocation;
 use App\Models\StudentParent;
 use App\Models\User;
+use App\Models\House;
 use App\Services\AdmissionService;
 use App\Services\TeacherScopeService;
 use Illuminate\Http\Request;
@@ -37,7 +38,12 @@ class StudentController extends Controller
         // ── Teacher data scope ─────────────────────────────────────────────────
         $scope = app(TeacherScopeService::class)->for(auth()->user());
 
-        $query = Student::with(['studentParent', 'currentAcademicHistory.courseClass', 'currentAcademicHistory.section'])
+        $query = Student::with([
+                'studentParent',
+                'currentAcademicHistory.courseClass',
+                'currentAcademicHistory.section',
+                'currentHouseAssignment.house:id,name,color',
+            ])
             ->where('school_id', $schoolId);
 
         // ── Portal User Scope (Parents only see their children, Students only see themselves) ─
@@ -90,6 +96,15 @@ class StudentController extends Controller
             $query->whereHas('currentAcademicHistory', function ($q) use ($request, $academicYearId) {
                 $q->where('academic_year_id', $academicYearId)
                   ->where('section_id', $request->section_id);
+            });
+        }
+
+        if ($request->filled('house_id')) {
+            $query->whereHas('currentHouseAssignment', function ($q) use ($request, $academicYearId) {
+                $q->where('house_id', $request->house_id);
+                if ($academicYearId) {
+                    $q->where('academic_year_id', $academicYearId);
+                }
             });
         }
 
@@ -164,11 +179,14 @@ class StudentController extends Controller
         }
         $classes = $classQuery->get();
 
+        $houses = House::where('school_id', $schoolId)->orderBy('name')->get(['id', 'name', 'color']);
+
         return Inertia::render('School/Students/Index', [
             'students'            => $students,
             'classes'             => $classes,
+            'houses'              => $houses,
             'filters'             => array_merge(
-                $request->only(['search', 'class_id', 'section_id', 'status']),
+                $request->only(['search', 'class_id', 'section_id', 'status', 'house_id']),
                 ['per_page' => $perPage],
             ),
             'teacher_section_ids' => $scope->restricted ? $scope->sectionIds->values() : null,

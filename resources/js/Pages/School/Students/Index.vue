@@ -23,6 +23,7 @@ const deleteStudent = (id) => del(
 const props = defineProps({
     students: { type: Object, required: true },
     classes:  { type: Array, required: true },
+    houses:   { type: Array, default: () => [] },
     filters:  { type: Object, default: () => ({}) },
 });
 
@@ -30,6 +31,7 @@ const viewMode = ref('card');
 const search = ref(props.filters.search ?? '');
 const selectedClass = ref(props.filters.class_id ?? '');
 const selectedSection = ref(props.filters.section_id ?? '');
+const selectedHouse = ref(props.filters.house_id ?? '');
 const perPage = ref(Number(props.filters.per_page) || 20);
 const PER_PAGE_OPTIONS = [20, 40, 60, 100];
 
@@ -40,11 +42,12 @@ if (selectedClass.value) {
 
 // Watch filters and debounce navigation. Always resets to page 1 so the user
 // doesn't land on a page that no longer exists after filtering.
-watch([search, selectedClass, selectedSection, perPage], debounce(function ([s, cls, sec, pp]) {
+watch([search, selectedClass, selectedSection, selectedHouse, perPage], debounce(function ([s, cls, sec, house, pp]) {
     router.get('/school/students', {
         search: s,
         class_id: cls,
         section_id: sec,
+        house_id: house,
         per_page: pp,
         page: 1,
     }, {
@@ -97,7 +100,7 @@ watch([search, selectedClass, selectedSection, perPage], debounce(function ([s, 
         </div>
 
         <!-- Filters -->
-        <FilterBar :active="!!(search || selectedClass || selectedSection)" @clear="search = ''; selectedClass = ''; selectedSection = ''">
+        <FilterBar :active="!!(search || selectedClass || selectedSection || selectedHouse)" @clear="search = ''; selectedClass = ''; selectedSection = ''; selectedHouse = ''">
             <div class="fb-search">
                 <svg class="fb-search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/></svg>
                 <input v-model="search" type="search" placeholder="Search by name or admission no...">
@@ -109,6 +112,10 @@ watch([search, selectedClass, selectedSection, perPage], debounce(function ([s, 
             <select v-model="selectedSection" :disabled="!selectedClass" style="width:140px;">
                 <option value="">All Sections</option>
                 <option v-for="sec in sections" :key="sec.id" :value="sec.id">{{ sec.name }}</option>
+            </select>
+            <select v-if="houses.length" v-model="selectedHouse" style="width:140px;">
+                <option value="">All Houses</option>
+                <option v-for="h in houses" :key="h.id" :value="h.id">{{ h.name }}</option>
             </select>
             <Button variant="secondary" size="sm" as="a" :href="`/school/students/export-qr?class_id=${selectedClass}&section_id=${selectedSection}`" title="Export QR codes to Excel">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -126,6 +133,7 @@ watch([search, selectedClass, selectedSection, perPage], debounce(function ([s, 
                             <th>ERP No</th>
                             <th>Admission #</th>
                             <th>Class / Section</th>
+                            <th>House</th>
                             <th>Gender</th>
                             <th>Date of Birth</th>
                             <th>Parent</th>
@@ -150,6 +158,12 @@ watch([search, selectedClass, selectedSection, perPage], debounce(function ([s, 
                             <td>
                                 <div style="font-weight:600;color:#1e293b;">{{ student.current_academic_history?.course_class?.name || 'Unassigned' }}</div>
                                 <div style="font-size:0.75rem;color:#94a3b8;">{{ student.current_academic_history?.section?.name }}</div>
+                            </td>
+                            <td>
+                                <span v-if="student.current_house_assignment?.house" class="house-pill" :style="{ background: student.current_house_assignment.house.color + '22', color: student.current_house_assignment.house.color, borderColor: student.current_house_assignment.house.color + '55' }">
+                                    {{ student.current_house_assignment.house.name }}
+                                </span>
+                                <span v-else style="color:var(--text-muted);">—</span>
                             </td>
                             <td>{{ student.gender || '—' }}</td>
                             <td style="white-space:nowrap;">{{ student.dob || '—' }}</td>
@@ -206,6 +220,10 @@ watch([search, selectedClass, selectedSection, perPage], debounce(function ([s, 
                         <div class="student-meta-item">
                             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                             <span>{{ student.student_parent?.father_name || student.student_parent?.mother_name || student.student_parent?.guardian_name || '—' }}</span>
+                        </div>
+                        <div v-if="student.current_house_assignment?.house" class="student-meta-item">
+                            <span class="house-dot-sm" :style="{ background: student.current_house_assignment.house.color }"></span>
+                            <span style="font-weight:600;" :style="{ color: student.current_house_assignment.house.color }">{{ student.current_house_assignment.house.name }}</span>
                         </div>
                         <div class="student-meta-item">
                             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
@@ -320,6 +338,16 @@ watch([search, selectedClass, selectedSection, perPage], debounce(function ([s, 
     transition: opacity 0.18s;
 }
 .student-card:hover::before { opacity: 1; }
+
+/* House badges */
+.house-pill {
+    display: inline-block; padding: 2px 9px; border-radius: 20px;
+    font-size: .72rem; font-weight: 700; border: 1px solid transparent;
+}
+.house-dot-sm {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; flex-shrink: 0;
+}
 
 /* Status dot */
 .student-card-status {

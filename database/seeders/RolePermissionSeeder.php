@@ -55,6 +55,7 @@ class RolePermissionSeeder extends Seeder
         'transport_allocations' => 'Transport: Student Allocation',
         'transport_tracking'    => 'Transport: Tracking',
         'hostel'        => 'Hostel',
+        'houses'        => 'Student Houses',
         'front_office'  => 'Front Office',
 
         // ── Communication ───────────────────────────────────────────────

@@ -776,6 +776,29 @@ Route::middleware('auth')->group(function () {
             });
         });
 
+        // Houses / School House System
+        Route::middleware(['module:houses'])->group(function () {
+            $HC  = \App\Http\Controllers\School\Houses\HouseController::class;
+            $HSC = \App\Http\Controllers\School\Houses\HouseStudentController::class;
+            $HPC = \App\Http\Controllers\School\Houses\HousePointController::class;
+            $HLC = \App\Http\Controllers\School\Houses\HouseLeaderboardController::class;
+
+            Route::group(['prefix' => 'houses', 'as' => 'houses.'], function () use ($HC, $HSC, $HPC, $HLC) {
+                Route::get('/',                                    [$HC,  'index'])   ->name('index');
+                Route::post('/',                                   [$HC,  'store'])   ->name('store');
+                Route::get('/leaderboard',                         [$HLC, 'index'])   ->name('leaderboard');
+                Route::get('/{house}',                             [$HC,  'show'])    ->name('show');
+                Route::put('/{house}',                             [$HC,  'update'])  ->name('update');
+                Route::delete('/{house}',                          [$HC,  'destroy']) ->name('destroy');
+
+                Route::post('/{house}/students',                   [$HSC, 'store'])   ->name('students.store');
+                Route::delete('/{house}/students/{student}',       [$HSC, 'destroy']) ->name('students.destroy');
+
+                Route::post('/{house}/points',                     [$HPC, 'store'])   ->name('points.store');
+                Route::delete('/{house}/points/{point}',           [$HPC, 'destroy']) ->name('points.destroy');
+            });
+        });
+
         // PTM (Parent-Teacher Meeting) Scheduling
         Route::middleware(['module:staff'])->group(function () {
             $PTMC = \App\Http\Controllers\School\PtmController::class;

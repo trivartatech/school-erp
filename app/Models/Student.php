@@ -151,6 +151,20 @@ class Student extends Model
         return $this->hasOne(TransferCertificate::class)->latestOfMany();
     }
 
+    public function houseAssignments()
+    {
+        return $this->hasMany(\App\Models\HouseStudent::class);
+    }
+
+    public function currentHouseAssignment()
+    {
+        if (app()->bound('current_academic_year_id')) {
+            return $this->hasOne(\App\Models\HouseStudent::class)
+                ->where('academic_year_id', app('current_academic_year_id'));
+        }
+        return $this->hasOne(\App\Models\HouseStudent::class)->latestOfMany();
+    }
+
     protected $casts = [
         'dob'            => 'date',
         'admission_date' => 'date',
