@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class AssetMaintenance extends Model
 {
+    protected $table = 'asset_maintenance';
+
     protected $fillable = [
         'asset_id', 'school_id', 'reported_on', 'issue_description', 'type',
         'status', 'cost', 'resolved_on', 'vendor', 'resolution_notes', 'reported_by',
