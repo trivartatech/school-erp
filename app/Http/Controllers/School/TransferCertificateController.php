@@ -146,7 +146,7 @@ class TransferCertificateController extends Controller
         $transferCertificate->load([
             'student.currentAcademicHistory.courseClass',
             'student.currentAcademicHistory.section',
-            'student.parent',
+            'student.studentParent',
             'requestedBy:id,name',
             'approvedBy:id,name',
             'school:id,name,address,phone,email,logo',
