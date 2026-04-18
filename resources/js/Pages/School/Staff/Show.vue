@@ -9,7 +9,7 @@ import { useSchoolStore } from '@/stores/useSchoolStore';
 
 const school = useSchoolStore();
 
-const { canDo, canRequestEditStaff } = usePermissions();
+const { canDo, canRequestEditStaff, canViewStaffSalary } = usePermissions();
 
 const props = defineProps({
     staff: Object,
@@ -17,7 +17,6 @@ const props = defineProps({
     payrolls: Array
 });
 
-// Format currency
 const formatMoney = (amount) => {
     if (!amount) return '₹0.00';
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -39,11 +38,24 @@ const totalLeaves = computed(() => {
     }
     return total;
 });
+
+const STATUS_MAP = {
+    active:     { label: 'Active',      cls: 'badge-green' },
+    inactive:   { label: 'Inactive',    cls: 'badge-gray'  },
+    on_leave:   { label: 'On Leave',    cls: 'badge-amber' },
+    resigned:   { label: 'Resigned',    cls: 'badge-amber' },
+    terminated: { label: 'Terminated',  cls: 'badge-red'   },
+};
+
+const staffStatus = computed(() => {
+    const s = props.staff.status;
+    return STATUS_MAP[s] ?? (props.staff.user?.is_active ? STATUS_MAP.active : STATUS_MAP.inactive);
+});
 </script>
 
 <template>
     <SchoolLayout :title="staff.user?.name + ' — Profile'">
-        
+
         <!-- Page Header -->
         <div class="page-header">
             <div style="display:flex;align-items:center;gap:12px;">
@@ -58,6 +70,10 @@ const totalLeaves = computed(() => {
                 </div>
             </div>
             <div style="display:flex;gap:8px;">
+                <Button variant="secondary" size="sm" as="link" v-if="canViewStaffSalary" :href="`/school/staff/${staff.id}/salary`">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                    Salary Form
+                </Button>
                 <Button variant="secondary" size="sm" as="link" v-if="canRequestEditStaff" :href="`/school/staff/${staff.id}/request-edit`">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                     Request Update
@@ -97,9 +113,7 @@ const totalLeaves = computed(() => {
                         </div>
 
                         <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:12px;">
-                            <span class="badge" :class="staff.user?.is_active ? 'badge-green' : 'badge-red'">
-                                {{ staff.user?.is_active ? 'Active' : 'Inactive' }}
-                            </span>
+                            <span class="badge" :class="staffStatus.cls">{{ staffStatus.label }}</span>
                             <span v-for="role in staff.user?.roles" :key="role.id" class="badge badge-indigo" style="text-transform:capitalize;">
                                 {{ role.name.replace('_', ' ') }}
                             </span>
@@ -146,6 +160,34 @@ const totalLeaves = computed(() => {
                         </div>
                     </div>
                 </div>
+
+                <!-- Quick Access -->
+                <div class="card">
+                    <div class="card-header"><span class="card-title">Quick Access</span></div>
+                    <div class="card-body" style="display:flex;flex-direction:column;gap:6px;">
+                        <Link :href="`/school/staff/${staff.id}/history`" class="quick-link">
+                            <span class="quick-link-icon">
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            </span>
+                            Career History
+                            <svg class="quick-link-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </Link>
+                        <Link v-if="canViewStaffSalary" :href="`/school/staff/${staff.id}/salary`" class="quick-link">
+                            <span class="quick-link-icon">
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                            </span>
+                            Salary &amp; Payroll Form
+                            <svg class="quick-link-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </Link>
+                        <Link href="/school/staff-attendance" class="quick-link">
+                            <span class="quick-link-icon">
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                            </span>
+                            Attendance Register
+                            <svg class="quick-link-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </Link>
+                    </div>
+                </div>
             </div>
 
             <!-- ── Right Column ── -->
@@ -153,7 +195,7 @@ const totalLeaves = computed(() => {
 
                 <!-- HR Profile -->
                 <div class="card">
-                    <div class="card-header"><span class="card-title">HR & Financial Profile</span></div>
+                    <div class="card-header"><span class="card-title">HR &amp; Financial Profile</span></div>
                     <div class="card-body">
                         <div class="hr-grid">
                             <div class="hr-field">
@@ -173,13 +215,20 @@ const totalLeaves = computed(() => {
                                 <p class="hr-value" style="font-family:monospace;text-transform:uppercase;">{{ staff.pan_no || 'N/A' }}</p>
                             </div>
                             <div class="hr-field">
+                                <p class="hr-label">EPF Number</p>
+                                <p class="hr-value" style="font-family:monospace;">{{ staff.epf_no || 'N/A' }}</p>
+                            </div>
+                            <div class="hr-field">
                                 <p class="hr-label">Bank Name</p>
                                 <p class="hr-value">{{ staff.bank_name || 'N/A' }}</p>
                             </div>
                             <div class="hr-field">
-                                <p class="hr-label">Account Details</p>
+                                <p class="hr-label">Account Number</p>
                                 <p class="hr-value" style="font-family:monospace;">{{ staff.bank_account_no ? `A/C: ${staff.bank_account_no}` : 'N/A' }}</p>
-                                <p v-if="staff.ifsc_code" style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">IFSC: {{ staff.ifsc_code }}</p>
+                            </div>
+                            <div class="hr-field">
+                                <p class="hr-label">IFSC Code</p>
+                                <p class="hr-value" style="font-family:monospace;text-transform:uppercase;">{{ staff.ifsc_code || 'N/A' }}</p>
                             </div>
                             <div v-if="staff.signature_url" class="hr-field">
                                 <p class="hr-label">Signature</p>
@@ -191,7 +240,10 @@ const totalLeaves = computed(() => {
 
                 <!-- Payroll History -->
                 <div class="card" style="overflow:hidden;">
-                    <div class="card-header"><span class="card-title">Payroll History (Last 6 Months)</span></div>
+                    <div class="card-header">
+                        <span class="card-title">Payroll History (Last 6 Months)</span>
+                        <Link v-if="canViewStaffSalary" :href="`/school/staff/${staff.id}/salary`" style="font-size:0.8125rem;color:#6366f1;font-weight:600;">Manage →</Link>
+                    </div>
                     <div v-if="!payrolls?.length" style="padding:40px 24px;text-align:center;color:#94a3b8;">
                         <p style="font-weight:600;color:#1e293b;">No payroll records found.</p>
                         <p style="font-size:0.8125rem;margin-top:4px;">Salary slips will appear here once generated by HR.</p>
@@ -312,6 +364,25 @@ const totalLeaves = computed(() => {
 .leave-stat--gray { background: #f8fafc; }
 .leave-stat--gray .leave-stat-val { color: #475569; }
 .leave-stat--gray .leave-stat-lbl { color: #334155; }
+
+/* Quick Access */
+.quick-link {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px;
+    font-size: 0.875rem; font-weight: 500; color: #334155;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+}
+.quick-link:hover { background: #f1f5f9; color: #6366f1; }
+.quick-link-icon {
+    width: 32px; height: 32px; border-radius: 7px;
+    background: #ede9fe; color: #6366f1;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.quick-link-icon svg { width: 16px; height: 16px; }
+.quick-link-arrow { width: 14px; height: 14px; margin-left: auto; color: #cbd5e1; flex-shrink: 0; }
+.quick-link:hover .quick-link-arrow { color: #6366f1; }
 
 /* HR Grid */
 .hr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
