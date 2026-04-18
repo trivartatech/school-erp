@@ -108,7 +108,7 @@ class DashboardController extends Controller
 
             $totalAtt   = Attendance::where('student_id', $studentId)->where('academic_year_id', $yearId)->count();
             $presentAtt = Attendance::where('student_id', $studentId)->where('academic_year_id', $yearId)
-                ->whereIn('status', ['present', 'late'])->count();
+                ->whereIn('status', ['present', 'late', 'half_day'])->count();
             $student    = Student::find($studentId);
             $feeSummary = $student ? $this->feeService->getStudentFeeSummary($student, $yearId, $school->id) : [];
 
@@ -130,12 +130,18 @@ class DashboardController extends Controller
             ];
         }
 
+        $totalStudents  = Student::where('school_id', $school->id)->where('status', 'active')->count();
+        $markedToday    = Attendance::where('school_id', $school->id)->whereDate('date', today())->count();
+        $presentToday   = Attendance::where('school_id', $school->id)->whereDate('date', today())
+            ->whereIn('status', ['present', 'late', 'half_day'])->count();
+
         return [
-            'total_students'      => Student::where('school_id', $school->id)->count(),
-            'total_staff'         => \App\Models\Staff::where('school_id', $school->id)->count(),
-            'fee_collected_today' => FeePayment::where('school_id', $school->id)
+            'total_students'       => $totalStudents,
+            'total_staff'          => \App\Models\Staff::where('school_id', $school->id)->count(),
+            'fee_collected_today'  => FeePayment::where('school_id', $school->id)
                 ->whereDate('payment_date', today())->sum('amount_paid'),
-            'today_attendance_pct' => 0,
+            'today_attendance_pct' => $markedToday > 0 ? round($presentToday / max(1, $totalStudents) * 100, 1) : 0,
+            'today_unmarked'       => max(0, $totalStudents - $markedToday),
         ];
     }
 
@@ -163,19 +169,21 @@ class DashboardController extends Controller
             ->whereBetween('date', [now()->startOfMonth(), now()->endOfMonth()])
             ->get();
 
-        $present = $records->where('status', 'present')->count();
-        $absent  = $records->where('status', 'absent')->count();
-        $late    = $records->where('status', 'late')->count();
-        $leave   = $records->where('status', 'leave')->count();
-        $total   = $records->count();
+        $present  = $records->where('status', 'present')->count();
+        $absent   = $records->where('status', 'absent')->count();
+        $late     = $records->where('status', 'late')->count();
+        $half_day = $records->where('status', 'half_day')->count();
+        $leave    = $records->where('status', 'leave')->count();
+        $total    = $records->count();
 
         return [
             'present'        => $present,
             'absent'         => $absent,
             'late'           => $late,
+            'half_day'       => $half_day,
             'leave'          => $leave,
             'total'          => $total,
-            'attendance_pct' => $total > 0 ? round(($present + $late) / $total * 100) : 0,
+            'attendance_pct' => $total > 0 ? round(($present + $late + ($half_day * 0.5)) / $total * 100) : 0,
             'today_status'   => $todayRecord?->status ?? 'not_marked',
             'month'          => now()->format('M Y'),
         ];

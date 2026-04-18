@@ -172,7 +172,10 @@ const fmtCurrency = (n) => '₹' + new Intl.NumberFormat('en-IN', { maximumFract
                 <div style="font-size:1.8rem;font-weight:700;" :style="{ color: summary.attendance_pct >= 90 ? '#10b981' : summary.attendance_pct >= 75 ? '#f59e0b' : '#ef4444' }">
                     {{ summary.attendance_pct != null ? summary.attendance_pct + '%' : '—' }}
                 </div>
-                <div style="font-size:.75rem;color:#94a3b8;">{{ summary.present_today }} / {{ summary.marked_today }} marked</div>
+                <div style="font-size:.75rem;color:#94a3b8;">
+                    {{ summary.present_today }} / {{ summary.total_students }} total
+                    <span v-if="summary.unmarked_today > 0" style="color:#f59e0b;"> · {{ summary.unmarked_today }} unmarked</span>
+                </div>
             </div>
             <div class="card" style="padding:16px;">
                 <div style="font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">This Month Fee</div>

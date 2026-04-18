@@ -39,6 +39,8 @@ class AnalyticsDashboardController extends Controller
     {
         $days = collect(range(29, 0))->map(fn($i) => now()->subDays($i)->toDateString());
 
+        $totalEnrolled = Student::where('school_id', $schoolId)->where('status', 'active')->count();
+
         $records = Attendance::where('school_id', $schoolId)
             ->when($academicYearId, fn($q) => $q->where('academic_year_id', $academicYearId))
             ->whereBetween('date', [$days->first(), $days->last()])
@@ -47,13 +49,15 @@ class AnalyticsDashboardController extends Controller
             ->get()
             ->groupBy('date');
 
-        return $days->map(function ($date) use ($records) {
+        $denom = max(1, $totalEnrolled);
+
+        return $days->map(function ($date) use ($records, $denom) {
             $dayRecords = $records->get($date, collect());
             $total   = $dayRecords->sum('cnt');
             $present = $dayRecords->whereIn('status', ['present', 'late', 'half_day'])->sum('cnt');
             return [
-                'date' => $date,
-                'rate' => $total > 0 ? round($present / $total * 100, 1) : null,
+                'date'  => $date,
+                'rate'  => $total > 0 ? round($present / $denom * 100, 1) : null,
                 'total' => $total,
             ];
         })->values()->all();
@@ -225,7 +229,8 @@ class AnalyticsDashboardController extends Controller
             'total_students'   => $totalStudents,
             'present_today'    => $presentToday,
             'marked_today'     => $markedToday,
-            'attendance_pct'   => $markedToday > 0 ? round($presentToday / $markedToday * 100, 1) : null,
+            'unmarked_today'   => max(0, $totalStudents - $markedToday),
+            'attendance_pct'   => $markedToday > 0 ? round($presentToday / max(1, $totalStudents) * 100, 1) : null,
             'this_month_fee'   => (float) $thisMonthFee,
             'pending_leaves'   => $pendingLeaves,
         ];

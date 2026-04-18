@@ -334,14 +334,22 @@ class AttendanceController extends Controller
         $user = auth()->user();
         abort_if(!$user->can('view_attendance') && !$user->isSchoolManagement(), 403);
 
-        $schoolId  = app('current_school_id');
-        $classId   = $request->get('class_id');
-        $sectionId = $request->get('section_id');
+        $schoolId       = app('current_school_id');
+        $academicYearId = app()->bound('current_academic_year_id') ? app('current_academic_year_id') : null;
+        $classId        = $request->get('class_id');
+        $sectionId      = $request->get('section_id');
 
         $classes  = CourseClass::where('school_id', $schoolId)->orderBy('sort_order')->get(['id', 'name']);
         $sections = $classId
             ? Section::where('school_id', $schoolId)->where('course_class_id', $classId)->orderBy('sort_order')->get(['id', 'name'])
             : collect();
+
+        $enrolledCount = StudentAcademicHistory::where('school_id', $schoolId)
+            ->when($academicYearId, fn($q) => $q->where('academic_year_id', $academicYearId))
+            ->when($classId,   fn($q) => $q->where('class_id',   $classId))
+            ->when($sectionId, fn($q) => $q->where('section_id', $sectionId))
+            ->where('status', 'current')
+            ->count();
 
         $from = now()->subDays(29)->toDateString();
         $to   = now()->toDateString();
@@ -367,12 +375,13 @@ class AttendanceController extends Controller
         }
 
         $historical = [];
+        $denom = max(1, $enrolledCount);
         foreach ($byDate as $date => $c) {
             $total   = array_sum($c);
             $present = $c['present'] + (int) round($c['late'] * 0.5) + (int) round($c['half_day'] * 0.5);
             $historical[] = [
                 'date'    => $date,
-                'rate'    => $total > 0 ? round($present / $total * 100, 1) : null,
+                'rate'    => $total > 0 ? round($present / $denom * 100, 1) : null,
                 'present' => $c['present'],
                 'absent'  => $c['absent'],
                 'total'   => $total,
@@ -416,6 +425,124 @@ class AttendanceController extends Controller
             'sections'          => $sections,
             'selected_class_id' => $classId ? (int) $classId : null,
             'selected_section_id' => $sectionId ? (int) $sectionId : null,
+        ]);
+    }
+
+    /**
+     * Date-wise attendance report: each row is a calendar date with counts + student detail.
+     */
+    public function dateWise(Request $request)
+    {
+        $user = auth()->user();
+        abort_if(!$user->can('view_attendance') && !$user->isSchoolManagement(), 403, 'Access denied.');
+
+        $schoolId       = app('current_school_id');
+        $academicYearId = app()->bound('current_academic_year_id') ? app('current_academic_year_id') : null;
+
+        $scope = app(TeacherScopeService::class)->for($user);
+        $classQuery = CourseClass::where('school_id', $schoolId)->orderBy('sort_order');
+        if ($scope->restricted && $scope->classIds->isNotEmpty()) {
+            $classQuery->whereIn('id', $scope->classIds);
+        }
+        $classes = $classQuery->get(['id', 'name']);
+
+        $classId   = $request->get('class_id');
+        $sectionId = $request->get('section_id');
+        $from      = $request->get('from', now()->startOfMonth()->toDateString());
+        $to        = $request->get('to', now()->toDateString());
+
+        // Cap range at 92 days
+        $fromDate = \Carbon\Carbon::parse($from);
+        $toDate   = \Carbon\Carbon::parse($to);
+        if ($fromDate->diffInDays($toDate) > 92) {
+            $from     = $toDate->copy()->subDays(91)->toDateString();
+            $fromDate = \Carbon\Carbon::parse($from);
+        }
+
+        $sections = $classId
+            ? Section::where('school_id', $schoolId)->where('course_class_id', $classId)->orderBy('sort_order')->get(['id', 'name'])
+            : collect();
+
+        // Enrolled count for denominator
+        if ($classId && $academicYearId) {
+            $enrolledCount = StudentAcademicHistory::where('school_id', $schoolId)
+                ->where('academic_year_id', $academicYearId)
+                ->where('class_id', $classId)
+                ->when($sectionId, fn($q) => $q->where('section_id', $sectionId))
+                ->where('status', 'current')
+                ->count();
+        } else {
+            $enrolledCount = \App\Models\Student::where('school_id', $schoolId)->where('status', 'active')->count();
+        }
+
+        // Aggregate counts per date+status
+        $records = Attendance::where('school_id', $schoolId)
+            ->when($academicYearId, fn($q) => $q->where('academic_year_id', $academicYearId))
+            ->when($classId,   fn($q) => $q->where('class_id',   $classId))
+            ->when($sectionId, fn($q) => $q->where('section_id', $sectionId))
+            ->whereBetween('date', [$from, $to])
+            ->select('date', 'status', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('date', 'status')
+            ->get()
+            ->groupBy(fn($r) => (string) $r->date)
+            ->sortKeysDesc();
+
+        // Per-student detail — only when a class is selected to keep payload small
+        $detailByDate = collect();
+        if ($classId) {
+            $detailByDate = Attendance::where('school_id', $schoolId)
+                ->when($academicYearId, fn($q) => $q->where('academic_year_id', $academicYearId))
+                ->where('class_id', $classId)
+                ->when($sectionId, fn($q) => $q->where('section_id', $sectionId))
+                ->whereBetween('date', [$from, $to])
+                ->with('student:id,first_name,last_name,admission_no')
+                ->orderBy('date', 'desc')
+                ->get(['student_id', 'date', 'status', 'remarks'])
+                ->groupBy(fn($r) => (string) $r->date)
+                ->map(fn($rows) => $rows->sortBy(fn($r) => $r->student?->first_name)->map(fn($r) => [
+                    'name'         => trim(($r->student->first_name ?? '') . ' ' . ($r->student->last_name ?? '')),
+                    'admission_no' => $r->student->admission_no ?? '',
+                    'status'       => $r->status,
+                    'remarks'      => $r->remarks,
+                ])->values());
+        }
+
+        $report = [];
+        foreach ($records as $date => $rows) {
+            $counts = ['present' => 0, 'absent' => 0, 'late' => 0, 'half_day' => 0, 'leave' => 0];
+            foreach ($rows as $row) {
+                if (isset($counts[$row->status])) {
+                    $counts[$row->status] = (int) $row->cnt;
+                }
+            }
+            $marked           = array_sum($counts);
+            $effectivePresent = $counts['present'] + ($counts['late'] * 0.5) + ($counts['half_day'] * 0.5);
+
+            $report[] = [
+                'date'     => $date,
+                'day'      => \Carbon\Carbon::parse($date)->format('D'),
+                'present'  => $counts['present'],
+                'absent'   => $counts['absent'],
+                'late'     => $counts['late'],
+                'half_day' => $counts['half_day'],
+                'leave'    => $counts['leave'],
+                'marked'   => $marked,
+                'unmarked' => max(0, $enrolledCount - $marked),
+                'total'    => $enrolledCount,
+                'pct'      => $enrolledCount > 0 ? round($effectivePresent / $enrolledCount * 100, 1) : null,
+                'students' => $detailByDate->get($date, collect())->values()->all(),
+            ];
+        }
+
+        return Inertia::render('School/Attendance/DateWise', [
+            'classes'           => $classes,
+            'sections'          => $sections,
+            'report'            => $report,
+            'enrolledCount'     => $enrolledCount,
+            'selectedClassId'   => $classId ? (int) $classId : null,
+            'selectedSectionId' => $sectionId ? (int) $sectionId : null,
+            'from'              => $from,
+            'to'                => $to,
         ]);
     }
 

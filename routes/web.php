@@ -319,6 +319,7 @@ Route::middleware('auth')->group(function () {
             Route::post('attendance', [\App\Http\Controllers\School\AttendanceController::class, 'store'])->name('attendance.store');
             Route::get('attendance/report', [\App\Http\Controllers\School\AttendanceController::class, 'report'])->name('attendance.report');
             Route::get('attendance/forecast', [\App\Http\Controllers\School\AttendanceController::class, 'forecast'])->name('attendance.forecast');
+            Route::get('attendance/date-wise', [\App\Http\Controllers\School\AttendanceController::class, 'dateWise'])->name('attendance.date-wise');
         });
 
         // ── Finance & Fees (school_admin only) ──
