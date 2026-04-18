@@ -73,7 +73,7 @@ class LedgerAccountController extends Controller
 
     public function show(Ledger $ledger, Request $request)
     {
-        $this->authorize($ledger);
+        $this->guardTenant($ledger);
 
         $schoolId = app('current_school_id');
 
@@ -173,7 +173,7 @@ class LedgerAccountController extends Controller
 
     public function update(Request $request, Ledger $ledger)
     {
-        $this->authorize($ledger);
+        $this->guardTenant($ledger);
 
         $data = $request->validate([
             'ledger_type_id'        => 'required|exists:ledger_types,id',
@@ -200,7 +200,7 @@ class LedgerAccountController extends Controller
 
     public function destroy(Ledger $ledger)
     {
-        $this->authorize($ledger);
+        $this->guardTenant($ledger);
 
         if ($ledger->is_system) {
             return back()->withErrors(['error' => 'System ledgers cannot be deleted.']);
@@ -215,7 +215,7 @@ class LedgerAccountController extends Controller
         return back()->with('success', 'Ledger deleted.');
     }
 
-    private function authorize(Ledger $ledger): void
+    private function guardTenant(Ledger $ledger): void
     {
         abort_unless($ledger->school_id === app('current_school_id'), 403);
     }

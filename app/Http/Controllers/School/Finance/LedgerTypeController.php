@@ -64,7 +64,7 @@ class LedgerTypeController extends Controller
 
     public function update(Request $request, LedgerType $ledgerType)
     {
-        $this->authorize($ledgerType);
+        $this->guardTenant($ledgerType);
 
         $data = $request->validate([
             'name'        => 'required|string|max:100',
@@ -88,7 +88,7 @@ class LedgerTypeController extends Controller
 
     public function destroy(LedgerType $ledgerType)
     {
-        $this->authorize($ledgerType);
+        $this->guardTenant($ledgerType);
 
         if ($ledgerType->is_system) {
             return back()->withErrors(['error' => 'System ledger types cannot be deleted.']);
@@ -104,7 +104,7 @@ class LedgerTypeController extends Controller
     }
 
     // ── Tenant guard ─────────────────────────────────────────
-    private function authorize(LedgerType $type): void
+    private function guardTenant(LedgerType $type): void
     {
         abort_unless($type->school_id === app('current_school_id'), 403);
     }
