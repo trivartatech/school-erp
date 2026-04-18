@@ -46,7 +46,7 @@ class GlPostingService
             $tx = $this->createTransaction([
                 'school_id'        => $payment->school_id,
                 'academic_year_id' => $payment->academic_year_id,
-                'date'             => $payment->payment_date->toDateString(),
+                'date'             => $payment->getRawOriginal('payment_date'),
                 'type'             => 'receipt',
                 'narration'        => 'Fee receipt — ' . ($payment->receipt_no)
                                     . ($payment->student ? ' (' . $payment->student->name . ')' : ''),
@@ -90,7 +90,7 @@ class GlPostingService
             $tx = $this->createTransaction([
                 'school_id'        => $expense->school_id,
                 'academic_year_id' => $expense->academic_year_id,
-                'date'             => $expense->expense_date->toDateString(),
+                'date'             => $expense->getRawOriginal('expense_date'),
                 'type'             => 'payment',
                 'narration'        => 'Expense: ' . $expense->title
                                     . ($expense->category ? ' [' . $expense->category->name . ']' : ''),
@@ -186,7 +186,7 @@ class GlPostingService
             $tx = $this->createTransaction([
                 'school_id'        => $payroll->school_id,
                 'academic_year_id' => $academicYearId,
-                'date'             => ($payroll->payment_date ?? now())->toDateString(),
+                'date'             => $payroll->getRawOriginal('payment_date') ?? now()->toDateString(),
                 'type'             => 'payment',
                 'narration'        => "Payroll: {$staffName} ({$payroll->month}/{$payroll->year})",
                 'reference_no'     => 'PAYROLL-' . $payroll->id,

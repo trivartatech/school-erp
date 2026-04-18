@@ -85,7 +85,8 @@ class LedgerAccountController extends Controller
         // FIX #5: include transaction_id (integer) so Vue can build correct links.
         $lines = $ledger->transactionLines()
             ->join('transactions', 'transactions.id', '=', 'transaction_lines.transaction_id')
-            ->whereBetween('transactions.date', [$from, $to])
+            ->whereDate('transactions.date', '>=', $from)
+            ->whereDate('transactions.date', '<=', $to)
             ->select(
                 'transaction_lines.id',
                 'transaction_lines.transaction_id',
