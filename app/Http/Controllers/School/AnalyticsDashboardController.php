@@ -65,6 +65,9 @@ class AnalyticsDashboardController extends Controller
         // Last 12 months of collections
         $months = collect(range(11, 0))->map(fn($i) => now()->startOfMonth()->subMonths($i));
 
+        $isSqlite   = DB::connection()->getDriverName() === 'sqlite';
+        $monthFmt   = $isSqlite ? "strftime('%Y-%m', payment_date)" : "DATE_FORMAT(payment_date, '%Y-%m')";
+
         $collections = FeePayment::where('school_id', $schoolId)
             ->when($academicYearId, fn($q) => $q->where('academic_year_id', $academicYearId))
             ->where('amount_paid', '>', 0)
@@ -73,7 +76,7 @@ class AnalyticsDashboardController extends Controller
                 now()->endOfMonth()->toDateString(),
             ])
             ->select(
-                DB::raw("DATE_FORMAT(payment_date, '%Y-%m') as month"),
+                DB::raw("$monthFmt as month"),
                 DB::raw('SUM(amount_paid) as collected'),
                 DB::raw('COUNT(*) as payments')
             )
@@ -156,13 +159,21 @@ class AnalyticsDashboardController extends Controller
     // ── Staff leave heatmap: approved leaves per month ───────────────────
     private function staffLeaveHeatmap(int $schoolId): array
     {
+        $isSqlite  = DB::connection()->getDriverName() === 'sqlite';
+        $monthExpr = $isSqlite
+            ? "CAST(strftime('%m', start_date) AS INTEGER)"
+            : "MONTH(start_date)";
+        $daysExpr  = $isSqlite
+            ? "SUM(CAST(julianday(end_date) - julianday(start_date) + 1 AS INTEGER))"
+            : "SUM(DATEDIFF(end_date, start_date) + 1)";
+
         $rows = Leave::where('school_id', $schoolId)
             ->where('status', 'approved')
             ->whereYear('start_date', now()->year)
             ->select(
-                DB::raw("MONTH(start_date) as month"),
+                DB::raw("$monthExpr as month"),
                 DB::raw('COUNT(*) as count'),
-                DB::raw('SUM(DATEDIFF(end_date, start_date) + 1) as days')
+                DB::raw("$daysExpr as days")
             )
             ->groupBy('month')
             ->orderBy('month')

@@ -62,7 +62,7 @@ class StudentExportController extends Controller
                 ucfirst($s->gender ?? ''),
                 $history?->courseClass?->name ?? '',
                 $history?->section?->name ?? '',
-                ucfirst($s->status),
+                $s->status?->label() ?? '',
                 $s->studentParent?->father_name ?? '',
                 $s->studentParent?->mother_name ?? '',
                 $s->studentParent?->primary_phone ?? '',
