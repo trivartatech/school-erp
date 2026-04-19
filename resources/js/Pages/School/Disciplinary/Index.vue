@@ -237,7 +237,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                 <div style="display:flex;align-items:center;gap:12px;">
                     <button class="back-btn" @click="backToList">
                         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-                        Back
+                        Back to Records
                     </button>
                     <h1 class="page-header-title" style="margin:0;">Add Disciplinary Incident</h1>
                 </div>
@@ -245,145 +245,140 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
 
             <!-- Class / Section filter card -->
             <div class="card" style="margin-bottom:16px;">
-                <div class="card-body">
-                    <div class="add-filters">
-                        <div class="filter-group">
-                            <label class="filter-label">Class</label>
-                            <select v-model="browseClass" class="filter-select" @change="browseSection = ''; expandedId = null; quickForm.reset();">
-                                <option value="">— Select Class —</option>
-                                <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label class="filter-label">Section</label>
-                            <select v-model="browseSection" class="filter-select" :disabled="!browseClass" @change="expandedId = null; quickForm.reset();">
-                                <option value="">All Sections</option>
-                                <option v-for="s in filteredSections" :key="s.id" :value="s.id">{{ s.name }}</option>
-                            </select>
-                        </div>
-                        <div v-if="browseClass && browsedStudents.length" class="student-count-badge">
-                            {{ browsedStudents.length }} student{{ browsedStudents.length !== 1 ? 's' : '' }}
-                        </div>
+                <div class="card-body add-filter-bar">
+                    <div class="add-filter-field">
+                        <label class="add-filter-label">Class</label>
+                        <select v-model="browseClass" @change="browseSection = ''; expandedId = null; quickForm.reset();">
+                            <option value="">— Select Class —</option>
+                            <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
+                        </select>
+                    </div>
+                    <div class="add-filter-field">
+                        <label class="add-filter-label">Section</label>
+                        <select v-model="browseSection" :disabled="!browseClass" @change="expandedId = null; quickForm.reset();">
+                            <option value="">All Sections</option>
+                            <option v-for="s in filteredSections" :key="s.id" :value="s.id">{{ s.name }}</option>
+                        </select>
+                    </div>
+                    <div v-if="browseClass && browsedStudents.length" class="student-pill">
+                        {{ browsedStudents.length }} student{{ browsedStudents.length !== 1 ? 's' : '' }}
                     </div>
                 </div>
             </div>
 
             <!-- Empty prompt -->
-            <div v-if="!browseClass" class="empty-prompt card">
-                <div class="card-body empty-prompt-body">
-                    <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1">
+            <div v-if="!browseClass" class="card">
+                <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:56px 20px;">
+                    <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
                     </svg>
-                    <p style="margin:0;color:#94a3b8;font-size:.95rem;">Select a class above to view students</p>
+                    <p style="margin:0;color:#94a3b8;font-size:.9rem;">Select a class to view students</p>
                 </div>
             </div>
 
-            <div v-else-if="!browsedStudents.length" class="empty-prompt card">
-                <div class="card-body empty-prompt-body">
-                    <p style="margin:0;color:#94a3b8;">No students found for the selected class / section.</p>
+            <div v-else-if="!browsedStudents.length" class="card">
+                <div class="card-body" style="text-align:center;padding:40px;color:#94a3b8;">
+                    No students found for the selected class / section.
                 </div>
             </div>
 
-            <!-- Student table with inline forms -->
-            <div v-else class="card">
-                <div style="overflow-x:auto;">
-                    <table class="table add-table">
-                        <thead>
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Student</th>
-                                <th style="width:90px;">Roll No</th>
-                                <th style="width:150px;text-align:right;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <template v-for="(s, idx) in browsedStudents" :key="s.id">
+            <!-- Student list with inline forms -->
+            <div v-else class="card" style="overflow:hidden;">
+                <!-- Table header -->
+                <div class="student-list-header">
+                    <span style="width:36px;text-align:center;">#</span>
+                    <span style="flex:1;">Student</span>
+                    <span style="width:100px;">Roll No</span>
+                    <span style="width:140px;"></span>
+                </div>
 
-                                <!-- Student row -->
-                                <tr :class="['student-row', { 'row-active': expandedId === s.id }]">
-                                    <td style="color:#94a3b8;font-size:.8rem;font-weight:500;">{{ idx + 1 }}</td>
-                                    <td>
-                                        <div style="font-weight:600;color:#1e293b;">{{ s.first_name }} {{ s.last_name }}</div>
-                                        <div style="font-size:.72rem;color:#94a3b8;">{{ s.admission_no }}</div>
-                                    </td>
-                                    <td style="font-size:.85rem;color:#64748b;">{{ s.current_academic_history?.roll_no || '—' }}</td>
-                                    <td style="text-align:right;">
-                                        <Button
-                                            :variant="expandedId === s.id ? 'secondary' : 'primary'"
-                                            size="sm"
-                                            @click="toggleRow(s.id)"
-                                        >
-                                            {{ expandedId === s.id ? '✕ Cancel' : '+ Add Incident' }}
-                                        </Button>
-                                    </td>
-                                </tr>
+                <!-- Rows -->
+                <div class="student-list">
+                    <template v-for="(s, idx) in browsedStudents" :key="s.id">
 
-                                <!-- Inline incident form -->
-                                <tr v-if="expandedId === s.id" class="form-row">
-                                    <td colspan="4" style="padding:0;border-bottom:2px solid #3b82f6;">
-                                        <form @submit.prevent="submitQuick" class="incident-form">
-                                            <div class="incident-form-header">
-                                                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                                                Logging incident for <strong>{{ s.first_name }} {{ s.last_name }}</strong>
-                                            </div>
-                                            <div class="incident-grid">
-                                                <div class="form-field">
-                                                    <label>Date *</label>
-                                                    <input v-model="quickForm.incident_date" type="date" required />
-                                                    <span v-if="quickForm.errors.incident_date" class="field-error">{{ quickForm.errors.incident_date }}</span>
-                                                </div>
-                                                <div class="form-field">
-                                                    <label>Category *</label>
-                                                    <select v-model="quickForm.category" required>
-                                                        <option value="">Select category</option>
-                                                        <option v-for="c in CATEGORIES" :key="c" :value="c">{{ c }}</option>
-                                                    </select>
-                                                    <span v-if="quickForm.errors.category" class="field-error">{{ quickForm.errors.category }}</span>
-                                                </div>
-                                                <div class="form-field">
-                                                    <label>Severity *</label>
-                                                    <select v-model="quickForm.severity" required>
-                                                        <option value="minor">Minor</option>
-                                                        <option value="moderate">Moderate</option>
-                                                        <option value="major">Major</option>
-                                                    </select>
-                                                </div>
-                                                <div class="form-field">
-                                                    <label>Consequence</label>
-                                                    <select v-model="quickForm.consequence">
-                                                        <option value="">— None —</option>
-                                                        <option v-for="c in CONSEQUENCES" :key="c" :value="c" style="text-transform:capitalize;">{{ c.replace('_', ' ') }}</option>
-                                                    </select>
-                                                </div>
-                                                <div class="form-field" style="grid-column:1/-1;">
-                                                    <label>Description *</label>
-                                                    <textarea v-model="quickForm.description" rows="2" required placeholder="Describe the incident…"></textarea>
-                                                    <span v-if="quickForm.errors.description" class="field-error">{{ quickForm.errors.description }}</span>
-                                                </div>
-                                                <div class="form-field" style="grid-column:1/-1;">
-                                                    <label>Action Taken</label>
-                                                    <input v-model="quickForm.action_taken" type="text" placeholder="Optional — what action was taken?" />
-                                                </div>
-                                                <div v-if="quickForm.consequence === 'suspension' || quickForm.consequence === 'detention'" class="form-field" style="grid-column:1/-1;">
-                                                    <label>Consequence Period</label>
-                                                    <div style="display:flex;gap:8px;align-items:center;">
-                                                        <input v-model="quickForm.consequence_from" type="date" style="flex:1;" />
-                                                        <span style="color:#94a3b8;font-size:.8rem;">to</span>
-                                                        <input v-model="quickForm.consequence_to" type="date" style="flex:1;" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="incident-form-actions">
-                                                <Button variant="secondary" size="sm" type="button" @click="toggleRow(s.id)">Cancel</Button>
-                                                <Button size="sm" type="submit" :loading="quickForm.processing">Save Record</Button>
-                                            </div>
-                                        </form>
-                                    </td>
-                                </tr>
+                        <!-- Student row -->
+                        <div :class="['student-item', { 'item-active': expandedId === s.id }]">
+                            <span class="item-num">{{ idx + 1 }}</span>
+                            <span class="item-info">
+                                <span class="item-name">{{ s.first_name }} {{ s.last_name }}</span>
+                                <span class="item-adm">{{ s.admission_no }}</span>
+                            </span>
+                            <span class="item-roll">{{ s.current_academic_history?.roll_no || '—' }}</span>
+                            <span class="item-action">
+                                <button
+                                    :class="['incident-btn', expandedId === s.id ? 'btn-cancel' : 'btn-add']"
+                                    @click="toggleRow(s.id)"
+                                    type="button"
+                                >
+                                    {{ expandedId === s.id ? '✕ Cancel' : '+ Add Incident' }}
+                                </button>
+                            </span>
+                        </div>
 
-                            </template>
-                        </tbody>
-                    </table>
+                        <!-- Inline incident form -->
+                        <div v-if="expandedId === s.id" class="incident-panel">
+                            <form @submit.prevent="submitQuick">
+                                <div class="panel-title">
+                                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="#3b82f6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                    Recording incident for <strong>{{ s.first_name }} {{ s.last_name }}</strong>
+                                </div>
+
+                                <div class="panel-grid">
+                                    <div class="form-field">
+                                        <label>Date *</label>
+                                        <input v-model="quickForm.incident_date" type="date" required />
+                                        <span v-if="quickForm.errors.incident_date" class="field-error">{{ quickForm.errors.incident_date }}</span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label>Category *</label>
+                                        <select v-model="quickForm.category" required>
+                                            <option value="">Select category</option>
+                                            <option v-for="c in CATEGORIES" :key="c" :value="c">{{ c }}</option>
+                                        </select>
+                                        <span v-if="quickForm.errors.category" class="field-error">{{ quickForm.errors.category }}</span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label>Severity *</label>
+                                        <select v-model="quickForm.severity" required>
+                                            <option value="minor">Minor</option>
+                                            <option value="moderate">Moderate</option>
+                                            <option value="major">Major</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-field">
+                                        <label>Consequence</label>
+                                        <select v-model="quickForm.consequence">
+                                            <option value="">— None —</option>
+                                            <option v-for="c in CONSEQUENCES" :key="c" :value="c" style="text-transform:capitalize;">{{ c.replace('_', ' ') }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-field panel-full">
+                                        <label>Description *</label>
+                                        <textarea v-model="quickForm.description" rows="3" required placeholder="Describe the incident in detail…"></textarea>
+                                        <span v-if="quickForm.errors.description" class="field-error">{{ quickForm.errors.description }}</span>
+                                    </div>
+                                    <div class="form-field panel-full">
+                                        <label>Action Taken</label>
+                                        <input v-model="quickForm.action_taken" type="text" placeholder="Optional — what action was taken?" />
+                                    </div>
+                                    <div v-if="quickForm.consequence === 'suspension' || quickForm.consequence === 'detention'" class="form-field panel-full">
+                                        <label>Consequence Period</label>
+                                        <div style="display:flex;gap:10px;align-items:center;">
+                                            <input v-model="quickForm.consequence_from" type="date" style="flex:1;" />
+                                            <span style="color:#94a3b8;font-size:.8rem;white-space:nowrap;">to</span>
+                                            <input v-model="quickForm.consequence_to" type="date" style="flex:1;" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="panel-actions">
+                                    <button type="button" class="btn-outline" @click="toggleRow(s.id)">Cancel</button>
+                                    <Button size="sm" type="submit" :loading="quickForm.processing">Save Record</Button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </template>
                 </div>
             </div>
         </template>
@@ -484,45 +479,77 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
 
 /* ── Back button ── */
 .back-btn {
-    display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
+    display:inline-flex;align-items:center;gap:6px;padding:7px 16px;
     background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;
     font-size:.85rem;font-weight:500;color:#475569;cursor:pointer;
-    transition:background .15s,color .15s;
+    transition:background .15s,color .15s;white-space:nowrap;
 }
 .back-btn:hover { background:#e2e8f0;color:#1e293b; }
 
-/* ── Add-view filters ── */
-.add-filters { display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap; }
-.filter-group { display:flex;flex-direction:column;gap:5px; }
-.filter-label { font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em; }
-.filter-select { width:200px; }
-.student-count-badge {
-    margin-left:auto;padding:6px 14px;background:#eff6ff;
+/* ── Add filter bar ── */
+.add-filter-bar { display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap; }
+.add-filter-field { display:flex;flex-direction:column;gap:5px; }
+.add-filter-field select { width:200px; }
+.add-filter-label { font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em; }
+.student-pill {
+    margin-left:auto;padding:6px 16px;background:#eff6ff;
     border:1px solid #bfdbfe;border-radius:20px;
     font-size:.8rem;font-weight:600;color:#1d4ed8;align-self:center;
 }
 
-/* ── Empty prompt ── */
-.empty-prompt { margin-top:8px; }
-.empty-prompt-body { display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 20px; }
-
-/* ── Student table ── */
-.add-table td, .add-table th { vertical-align:middle; }
-.student-row { transition:background .12s; }
-.student-row:hover { background:#f8fafc; }
-.student-row.row-active { background:#eff6ff;border-left:3px solid #3b82f6; }
-
-/* ── Inline incident form ── */
-.form-row { background:#f0f9ff; }
-.incident-form { padding:20px 24px; }
-.incident-form-header {
-    display:flex;align-items:center;gap:8px;
-    font-size:.82rem;color:#3b82f6;margin-bottom:16px;
-    padding-bottom:12px;border-bottom:1px solid #bae6fd;
+/* ── Student list (flexbox rows) ── */
+.student-list-header {
+    display:flex;align-items:center;gap:0;
+    padding:10px 20px;border-bottom:2px solid #e2e8f0;
+    font-size:.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;
+    background:#f8fafc;
 }
-.incident-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:14px; }
-.incident-form-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid #bae6fd; }
+.student-list { }
+
+.student-item {
+    display:flex;align-items:center;gap:0;
+    padding:14px 20px;border-bottom:1px solid #f1f5f9;
+    transition:background .12s;cursor:default;
+}
+.student-item:hover { background:#f8fafc; }
+.student-item.item-active { background:#eff6ff;border-left:3px solid #3b82f6;padding-left:17px; }
+
+.item-num  { width:36px;font-size:.8rem;color:#cbd5e1;font-weight:600;text-align:center;flex-shrink:0; }
+.item-info { flex:1;display:flex;flex-direction:column;gap:2px; }
+.item-name { font-size:.95rem;font-weight:600;color:#1e293b; }
+.item-adm  { font-size:.72rem;color:#94a3b8; }
+.item-roll { width:100px;font-size:.85rem;color:#64748b; }
+.item-action { width:140px;display:flex;justify-content:flex-end; }
+
+.incident-btn {
+    padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:600;
+    cursor:pointer;border:none;transition:background .15s,color .15s;
+}
+.btn-add  { background:#3b82f6;color:#fff; }
+.btn-add:hover  { background:#2563eb; }
+.btn-cancel { background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0; }
+.btn-cancel:hover { background:#e2e8f0;color:#1e293b; }
+
+/* ── Incident panel ── */
+.incident-panel {
+    background:#f0f9ff;border-left:3px solid #3b82f6;
+    border-bottom:1px solid #bae6fd;padding:20px 24px;
+}
+.panel-title {
+    display:flex;align-items:center;gap:7px;
+    font-size:.82rem;color:#3b82f6;margin-bottom:18px;
+    padding-bottom:14px;border-bottom:1px solid #bae6fd;
+}
+.panel-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:16px; }
+.panel-full { grid-column:1/-1; }
+.panel-actions { display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid #bae6fd; }
 .field-error { color:#dc2626;font-size:.72rem;margin-top:3px;display:block; }
+
+.btn-outline {
+    padding:7px 18px;border:1px solid #e2e8f0;border-radius:8px;
+    background:#fff;color:#64748b;font-size:.85rem;font-weight:500;cursor:pointer;
+}
+.btn-outline:hover { background:#f1f5f9;color:#1e293b; }
 
 /* ── Edit modal ── */
 .modal-backdrop { position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:1000; }
