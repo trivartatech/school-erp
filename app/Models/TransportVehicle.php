@@ -14,6 +14,7 @@ class TransportVehicle extends Model
         'vehicle_number',
         'vehicle_name',
         'driver_id',
+        'conductor_id',
         'conductor_name',
         'capacity',
         'route_id',
@@ -47,6 +48,11 @@ class TransportVehicle extends Model
     public function driver()
     {
         return $this->belongsTo(Staff::class, 'driver_id');
+    }
+
+    public function conductor()
+    {
+        return $this->belongsTo(Staff::class, 'conductor_id');
     }
 
     public function route()

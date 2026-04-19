@@ -18,6 +18,8 @@ class VehicleController extends Controller
             ->with([
                 'driver:id,user_id',
                 'driver.user:id,name,phone',
+                'conductor:id,user_id',
+                'conductor.user:id,name,phone',
                 'route:id,route_name,route_code',
                 'liveLocation',
             ])
@@ -32,10 +34,16 @@ class VehicleController extends Controller
             ->with('user:id,name,phone')
             ->get(['id', 'user_id']);
 
+        // Conductors — all staff (conductors may not have a specific designation)
+        $conductors = Staff::tenant()
+            ->with('user:id,name,phone')
+            ->get(['id', 'user_id']);
+
         return Inertia::render('School/Transport/Vehicles/Index', [
-            'vehicles' => $vehicles,
-            'routes'   => $routes,
-            'drivers'  => $drivers,
+            'vehicles'   => $vehicles,
+            'routes'     => $routes,
+            'drivers'    => $drivers,
+            'conductors' => $conductors,
         ]);
     }
 
@@ -47,6 +55,7 @@ class VehicleController extends Controller
             'vehicle_number'   => 'required|string|max:50|unique:transport_vehicles,vehicle_number,NULL,id,school_id,' . $schoolId,
             'vehicle_name'     => 'nullable|string|max:255',
             'driver_id'        => ['nullable', Rule::exists('staff', 'id')->where('school_id', $schoolId)],
+            'conductor_id'     => ['nullable', Rule::exists('staff', 'id')->where('school_id', $schoolId)],
             'conductor_name'   => 'nullable|string|max:255',
             'capacity'         => 'required|integer|min:1',
             'route_id'         => ['nullable', Rule::exists('transport_routes', 'id')->where('school_id', $schoolId)],
@@ -71,6 +80,7 @@ class VehicleController extends Controller
             'vehicle_number'   => 'required|string|max:50|unique:transport_vehicles,vehicle_number,' . $vehicle->id . ',id,school_id,' . $schoolId,
             'vehicle_name'     => 'nullable|string|max:255',
             'driver_id'        => ['nullable', Rule::exists('staff', 'id')->where('school_id', $schoolId)],
+            'conductor_id'     => ['nullable', Rule::exists('staff', 'id')->where('school_id', $schoolId)],
             'conductor_name'   => 'nullable|string|max:255',
             'capacity'         => 'required|integer|min:1',
             'route_id'         => ['nullable', Rule::exists('transport_routes', 'id')->where('school_id', $schoolId)],

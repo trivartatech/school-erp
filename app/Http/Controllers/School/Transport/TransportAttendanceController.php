@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\School\Transport;
 
 use App\Http\Controllers\Controller;
+use App\Models\Student;
 use App\Models\TransportAttendance;
 use App\Models\TransportRoute;
 use App\Models\TransportStudentAllocation;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -101,6 +103,14 @@ class TransportAttendanceController extends Controller
         // Get vehicle for this route
         $vehicle = $route->vehicles()->first();
 
+        // Index stop_id per student for notification context
+        $stopsByStudent = TransportStudentAllocation::where('school_id', $schoolId)
+            ->where('route_id', $validated['route_id'])
+            ->where('status', 'active')
+            ->with('stop:id,stop_name')
+            ->get()
+            ->keyBy('student_id');
+
         foreach ($validated['records'] as $record) {
             TransportAttendance::updateOrCreate(
                 [
@@ -118,6 +128,33 @@ class TransportAttendanceController extends Controller
                     'marked_by'  => auth()->id(),
                 ]
             );
+        }
+
+        // Send parent notifications (non-blocking — failures are logged, not thrown)
+        if (app()->bound('current_school')) {
+            try {
+                $notifier   = app(NotificationService::class);
+                $studentIds = collect($validated['records'])->pluck('student_id');
+                $students   = Student::whereIn('id', $studentIds)
+                    ->with(['user:id,name', 'studentParent.user'])
+                    ->get()
+                    ->keyBy('id');
+
+                foreach ($validated['records'] as $record) {
+                    $student  = $students->get($record['student_id']);
+                    $stopName = $stopsByStudent->get($record['student_id'])?->stop?->stop_name;
+                    if ($student) {
+                        $notifier->notifyTransportAttendance(
+                            $student,
+                            $record['status'],
+                            $validated['trip_type'],
+                            $stopName
+                        );
+                    }
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Transport attendance notification failed: ' . $e->getMessage());
+            }
         }
 
         return back()->with('success', 'Attendance saved for ' . count($validated['records']) . ' students.');

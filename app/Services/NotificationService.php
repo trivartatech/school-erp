@@ -337,6 +337,56 @@ class NotificationService
     }
 
     /**
+     * Transport attendance alert — notifies parent when child boards or is marked absent/late.
+     */
+    public function notifyTransportAttendance($student, $status, $tripType, $stopName = null)
+    {
+        $parent = $student->studentParent;
+        if (!$parent || !$parent->primary_phone) return;
+
+        $smsTemplate  = $this->getTemplate('sms', 'transport_attendance');
+        $waTemplate   = $this->getTemplate('whatsapp', 'transport_attendance');
+        $pushTemplate = $this->getTemplate('push', 'transport_attendance');
+
+        $tripLabel = $tripType === 'pickup' ? 'boarded the bus' : 'dropped off';
+
+        $data = [
+            'name'        => $student->user?->name ?? ($student->first_name ?? 'Student'),
+            'status'      => ucfirst($status),
+            'trip_type'   => $tripType,
+            'trip_label'  => $tripLabel,
+            'stop_name'   => $stopName ?? 'their stop',
+            'date'        => now()->format('d-M-Y'),
+            'time'        => now()->format('h:i A'),
+            'father_name' => $parent->father_name ?? 'Parent',
+            'app_name'    => $this->school->name,
+        ];
+
+        if ($smsTemplate) {
+            $message = $this->replacePlaceholders($smsTemplate->content, $data);
+            $this->sendSms($parent->primary_phone, $message, $smsTemplate->template_id, $parent->user_id, $data);
+        }
+
+        if ($waTemplate) {
+            $orderedParams = $this->extractOrderedWhatsAppParams($waTemplate->content, $data);
+            $this->sendWhatsApp($parent->primary_phone, $waTemplate->template_id, $orderedParams, $parent->user_id, $waTemplate->language_code ?? 'en');
+        }
+
+        if ($pushTemplate) {
+            $message = $this->replacePlaceholders($pushTemplate->content, $data);
+            $notiData = [
+                'type'       => 'transport',
+                'event_type' => 'transport_attendance',
+                'title'      => $this->replacePlaceholders($pushTemplate->subject ?? 'Transport Update', $data),
+                'message'    => $message,
+                'sender'     => $this->school->name,
+            ];
+            $this->sendPushToUser($parent->user ?? null, $notiData);
+            $this->sendPushToUser($student->user ?? null, $notiData);
+        }
+    }
+
+    /**
      * Automated Fee Alert
      */
     public function notifyFeePayment($payment)

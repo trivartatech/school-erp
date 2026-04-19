@@ -7,9 +7,10 @@ import { usePermissions } from '@/Composables/usePermissions';
 import Table from '@/Components/ui/Table.vue';
 
 const props = defineProps({
-    vehicles: Array,
-    routes:   Array,
-    drivers:  Array,
+    vehicles:   Array,
+    routes:     Array,
+    drivers:    Array,
+    conductors: Array,
 });
 
 const { can } = usePermissions();
@@ -19,7 +20,7 @@ const editingItem = ref(null);
 const saving      = ref(false);
 
 const form = reactive({
-    vehicle_number: '', vehicle_name: '', driver_id: '', conductor_name: '',
+    vehicle_number: '', vehicle_name: '', driver_id: '', conductor_id: '', conductor_name: '',
     capacity: '', route_id: '', gps_device_id: '',
     insurance_expiry: '', fitness_expiry: '', pollution_expiry: '', status: 'active',
 });
@@ -31,6 +32,7 @@ function openModal(vehicle = null) {
             vehicle_number:   vehicle.vehicle_number,
             vehicle_name:     vehicle.vehicle_name    || '',
             driver_id:        vehicle.driver_id       || '',
+            conductor_id:     vehicle.conductor_id    || '',
             conductor_name:   vehicle.conductor_name  || '',
             capacity:         vehicle.capacity,
             route_id:         vehicle.route_id        || '',
@@ -42,7 +44,7 @@ function openModal(vehicle = null) {
         });
     } else {
         Object.assign(form, {
-            vehicle_number: '', vehicle_name: '', driver_id: '', conductor_name: '',
+            vehicle_number: '', vehicle_name: '', driver_id: '', conductor_id: '', conductor_name: '',
             capacity: '', route_id: '', gps_device_id: '',
             insurance_expiry: '', fitness_expiry: '', pollution_expiry: '', status: 'active',
         });
@@ -135,7 +137,10 @@ function expiryClass(date) {
                             </td>
                             <td>
                                 <div>{{ v.driver?.user?.name || '—' }}</div>
-                                <div v-if="v.conductor_name" style="font-size: 0.75rem; color: var(--text-muted);">Cond: {{ v.conductor_name }}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                    <span v-if="v.conductor?.user?.name">Cond: {{ v.conductor.user.name }}</span>
+                                    <span v-else-if="v.conductor_name">Cond: {{ v.conductor_name }}</span>
+                                </div>
                             </td>
                             <td>{{ v.route?.route_name || '—' }}</td>
                             <td style="text-align: center;">{{ v.capacity }}</td>
@@ -195,8 +200,11 @@ function expiryClass(date) {
                                 </select>
                             </div>
                             <div class="form-field">
-                                <label>Conductor Name</label>
-                                <input v-model="form.conductor_name" type="text">
+                                <label>Conductor (Staff)</label>
+                                <select v-model="form.conductor_id">
+                                    <option value="">-- Select Conductor --</option>
+                                    <option v-for="c in conductors" :key="c.id" :value="c.id">{{ c.user?.name || 'Staff #' + c.id }}</option>
+                                </select>
                             </div>
                         </div>
                         <div class="form-row-3" style="margin-top: 1rem;">
