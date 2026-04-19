@@ -9,16 +9,15 @@ const props = defineProps({
     students: Array,
     classes: Array,
     sections: Array,
+    categories: Array,
     summary: Object,
     filters: Object,
 });
 
-const CATEGORIES = ['Misconduct', 'Bullying', 'Damage to Property', 'Dress Code Violation', 'Absenteeism', 'Cheating', 'Disrespect', 'Violence', 'Other'];
 const CONSEQUENCES = ['none', 'warning', 'detention', 'parent_call', 'suspension', 'expulsion'];
 const TODAY = new Date().toISOString().split('T')[0];
 
 // ── Page view toggle ───────────────────────────────────────────────
-// 'list' = records table | 'add' = add-by-class page
 const view = ref('list');
 
 // ── List filters ───────────────────────────────────────────────────
@@ -32,6 +31,37 @@ const applyFilters = () => {
         severity: filterSeverity.value,
         student_id: filterStudent.value,
     }, { preserveScroll: true, replace: true });
+};
+
+// ── Category management ────────────────────────────────────────────
+const showCatModal  = ref(false);
+const editingCatId  = ref(null);
+const editingCatName = ref('');
+
+const catAddForm = useForm({ name: '' });
+const catEditForm = useForm({ name: '' });
+
+const startEditCat = (cat) => { editingCatId.value = cat.id; editingCatName.value = cat.name; catEditForm.name = cat.name; };
+const cancelEditCat = () => { editingCatId.value = null; catEditForm.reset(); };
+
+const saveCatEdit = (cat) => {
+    catEditForm.put(`/school/disciplinary/categories/${cat.id}`, {
+        preserveScroll: true,
+        onSuccess: () => { editingCatId.value = null; catEditForm.reset(); },
+    });
+};
+
+const addCat = () => {
+    catAddForm.post('/school/disciplinary/categories', {
+        preserveScroll: true,
+        onSuccess: () => catAddForm.reset(),
+    });
+};
+
+const deleteCat = (id) => {
+    if (confirm('Delete this category?')) {
+        router.delete(`/school/disciplinary/categories/${id}`, { preserveScroll: true });
+    }
 };
 
 // ── Add-by-class state ─────────────────────────────────────────────
@@ -66,11 +96,7 @@ const openAdd = () => {
     view.value = 'add';
 };
 
-const backToList = () => {
-    view.value = 'list';
-    expandedId.value = null;
-    quickForm.reset();
-};
+const backToList = () => { view.value = 'list'; expandedId.value = null; quickForm.reset(); };
 
 const toggleRow = (studentId) => {
     if (expandedId.value === studentId) { expandedId.value = null; return; }
@@ -88,7 +114,7 @@ const submitQuick = () => {
     });
 };
 
-// ── Edit modal ─────────────────────────────────────────────────────
+// ── Edit record modal ──────────────────────────────────────────────
 const showEdit   = ref(false);
 const editRecord = ref(null);
 
@@ -136,40 +162,67 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
         <template v-if="view === 'list'">
             <div class="page-header">
                 <h1 class="page-header-title">Disciplinary Records</h1>
-                <Button @click="openAdd">+ Add Record</Button>
+                <div style="display:flex;gap:10px;">
+                    <button class="cat-btn" @click="showCatModal = true">
+                        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                        Manage Categories
+                    </button>
+                    <Button @click="openAdd">+ Add Record</Button>
+                </div>
             </div>
 
             <!-- Summary cards -->
             <div class="disc-stats">
-                <div class="card stat-card"><div class="card-body text-center">
-                    <div class="stat-value" style="color:#1d4ed8;">{{ summary.total }}</div>
-                    <div class="stat-label">Total Records</div>
-                </div></div>
-                <div class="card stat-card"><div class="card-body text-center">
-                    <div class="stat-value" style="color:#d97706;">{{ summary.open }}</div>
-                    <div class="stat-label">Open Cases</div>
-                </div></div>
-                <div class="card stat-card"><div class="card-body text-center">
-                    <div class="stat-value" style="color:#7c3aed;">{{ summary.this_month }}</div>
-                    <div class="stat-label">This Month</div>
-                </div></div>
-                <div class="card stat-card"><div class="card-body text-center">
-                    <div class="stat-value" style="color:#dc2626;">{{ summary.major }}</div>
-                    <div class="stat-label">Major Incidents</div>
-                </div></div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:#eff6ff;color:#1d4ed8;">
+                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </div>
+                    <div>
+                        <div class="stat-value" style="color:#1d4ed8;">{{ summary.total }}</div>
+                        <div class="stat-label">Total Records</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:#fffbeb;color:#d97706;">
+                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div>
+                        <div class="stat-value" style="color:#d97706;">{{ summary.open }}</div>
+                        <div class="stat-label">Open Cases</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:#f5f3ff;color:#7c3aed;">
+                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    </div>
+                    <div>
+                        <div class="stat-value" style="color:#7c3aed;">{{ summary.this_month }}</div>
+                        <div class="stat-label">This Month</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:#fef2f2;color:#dc2626;">
+                        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    </div>
+                    <div>
+                        <div class="stat-value" style="color:#dc2626;">{{ summary.major }}</div>
+                        <div class="stat-label">Major Incidents</div>
+                    </div>
+                </div>
             </div>
 
-            <!-- Filters -->
-            <div class="card" style="margin-bottom:16px;">
-                <div class="card-body" style="display:flex;gap:12px;flex-wrap:wrap;">
-                    <select v-model="filterStatus" @change="applyFilters" style="width:150px;">
+            <!-- Filter bar -->
+            <div class="filter-bar card">
+                <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 16px;">
+                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="#94a3b8"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/></svg>
+                    <select v-model="filterStatus" @change="applyFilters" style="width:140px;">
                         <option value="">All Statuses</option>
                         <option value="open">Open</option>
                         <option value="under_review">Under Review</option>
                         <option value="resolved">Resolved</option>
                         <option value="escalated">Escalated</option>
                     </select>
-                    <select v-model="filterSeverity" @change="applyFilters" style="width:150px;">
+                    <select v-model="filterSeverity" @change="applyFilters" style="width:140px;">
                         <option value="">All Severities</option>
                         <option value="minor">Minor</option>
                         <option value="moderate">Moderate</option>
@@ -179,13 +232,14 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                         <option value="">All Students</option>
                         <option v-for="s in students" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }}</option>
                     </select>
+                    <button v-if="filterStatus || filterSeverity || filterStudent" class="clear-btn" @click="filterStatus='';filterSeverity='';filterStudent='';applyFilters()">✕ Clear</button>
                 </div>
             </div>
 
             <!-- Records table -->
-            <div class="card">
+            <div class="card" style="overflow:hidden;">
                 <div style="overflow-x:auto;">
-                    <table class="table">
+                    <table class="disc-table">
                         <thead>
                             <tr>
                                 <th>Student</th>
@@ -195,32 +249,32 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                                 <th>Status</th>
                                 <th>Consequence</th>
                                 <th>Reported By</th>
-                                <th>Actions</th>
+                                <th style="text-align:right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="r in records.data" :key="r.id">
                                 <td>
-                                    <div style="font-weight:500;">{{ r.student?.first_name }} {{ r.student?.last_name }}</div>
-                                    <div style="font-size:.7rem;color:#94a3b8;">{{ r.student?.admission_no }}</div>
+                                    <div style="font-weight:600;color:#1e293b;">{{ r.student?.first_name }} {{ r.student?.last_name }}</div>
+                                    <div style="font-size:.72rem;color:#94a3b8;">{{ r.student?.admission_no }}</div>
                                 </td>
-                                <td style="white-space:nowrap;">{{ fmtDate(r.incident_date) }}</td>
-                                <td>{{ r.category }}</td>
+                                <td style="white-space:nowrap;color:#475569;">{{ fmtDate(r.incident_date) }}</td>
+                                <td style="color:#475569;">{{ r.category }}</td>
                                 <td>
-                                    <span style="font-weight:600;text-transform:capitalize;" :style="{ color: severityColor[r.severity] }">{{ r.severity }}</span>
+                                    <span class="sev-badge" :style="{ background: severityColor[r.severity] + '18', color: severityColor[r.severity] }">{{ r.severity }}</span>
                                 </td>
                                 <td><span class="badge" :class="statusBadge[r.status]" style="text-transform:capitalize;">{{ r.status?.replace('_', ' ') }}</span></td>
-                                <td style="text-transform:capitalize;font-size:.8rem;">{{ r.consequence ? r.consequence.replace('_', ' ') : '—' }}</td>
-                                <td style="font-size:.8rem;color:#64748b;">{{ r.reported_by?.name || '—' }}</td>
-                                <td>
-                                    <div style="display:flex;gap:4px;">
+                                <td style="text-transform:capitalize;font-size:.82rem;color:#64748b;">{{ r.consequence ? r.consequence.replace('_', ' ') : '—' }}</td>
+                                <td style="font-size:.82rem;color:#64748b;">{{ r.reported_by?.name || '—' }}</td>
+                                <td style="text-align:right;">
+                                    <div style="display:inline-flex;gap:6px;">
                                         <Button variant="secondary" size="xs" @click="openEdit(r)">Edit</Button>
                                         <Button variant="danger" size="xs" @click="deleteRecord(r.id)">Del</Button>
                                     </div>
                                 </td>
                             </tr>
                             <tr v-if="!records.data?.length">
-                                <td colspan="8" style="text-align:center;padding:32px;color:#94a3b8;">No records found.</td>
+                                <td colspan="8" class="empty-td">No records found.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -229,10 +283,9 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
         </template>
 
         <!-- ═══════════════════════════════════════════════════════════
-             ADD VIEW — class/section browse with inline incident forms
+             ADD VIEW
         ════════════════════════════════════════════════════════════ -->
         <template v-else-if="view === 'add'">
-            <!-- Page header -->
             <div class="page-header">
                 <div style="display:flex;align-items:center;gap:12px;">
                     <button class="back-btn" @click="backToList">
@@ -243,7 +296,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                 </div>
             </div>
 
-            <!-- Class / Section filter card -->
+            <!-- Class / Section filter -->
             <div class="card" style="margin-bottom:16px;">
                 <div class="card-body add-filter-bar">
                     <div class="add-filter-field">
@@ -266,63 +319,48 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                 </div>
             </div>
 
-            <!-- Empty prompt -->
+            <!-- Empty state -->
             <div v-if="!browseClass" class="card">
                 <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:56px 20px;">
-                    <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
+                    <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     <p style="margin:0;color:#94a3b8;font-size:.9rem;">Select a class to view students</p>
                 </div>
             </div>
-
             <div v-else-if="!browsedStudents.length" class="card">
-                <div class="card-body" style="text-align:center;padding:40px;color:#94a3b8;">
-                    No students found for the selected class / section.
-                </div>
+                <div class="card-body" style="text-align:center;padding:40px;color:#94a3b8;">No students found for the selected class / section.</div>
             </div>
 
-            <!-- Student list with inline forms -->
+            <!-- Student list -->
             <div v-else class="card" style="overflow:hidden;">
-                <!-- Table header -->
                 <div class="student-list-header">
-                    <span style="width:36px;text-align:center;">#</span>
-                    <span style="flex:1;">Student</span>
-                    <span style="width:100px;">Roll No</span>
-                    <span style="width:140px;"></span>
+                    <span class="col-num">#</span>
+                    <span class="col-student">Student</span>
+                    <span class="col-roll">Roll No</span>
+                    <span class="col-action"></span>
                 </div>
-
-                <!-- Rows -->
                 <div class="student-list">
                     <template v-for="(s, idx) in browsedStudents" :key="s.id">
-
-                        <!-- Student row -->
                         <div :class="['student-item', { 'item-active': expandedId === s.id }]">
-                            <span class="item-num">{{ idx + 1 }}</span>
-                            <span class="item-info">
+                            <span class="col-num item-num">{{ idx + 1 }}</span>
+                            <span class="col-student item-info">
                                 <span class="item-name">{{ s.first_name }} {{ s.last_name }}</span>
                                 <span class="item-adm">{{ s.admission_no }}</span>
                             </span>
-                            <span class="item-roll">{{ s.current_academic_history?.roll_no || '—' }}</span>
-                            <span class="item-action">
-                                <button
-                                    :class="['incident-btn', expandedId === s.id ? 'btn-cancel' : 'btn-add']"
-                                    @click="toggleRow(s.id)"
-                                    type="button"
-                                >
+                            <span class="col-roll" style="font-size:.85rem;color:#64748b;">{{ s.current_academic_history?.roll_no || '—' }}</span>
+                            <span class="col-action" style="text-align:right;">
+                                <button :class="['incident-btn', expandedId === s.id ? 'btn-cancel' : 'btn-add']" @click="toggleRow(s.id)" type="button">
                                     {{ expandedId === s.id ? '✕ Cancel' : '+ Add Incident' }}
                                 </button>
                             </span>
                         </div>
 
-                        <!-- Inline incident form -->
+                        <!-- Inline form -->
                         <div v-if="expandedId === s.id" class="incident-panel">
                             <form @submit.prevent="submitQuick">
                                 <div class="panel-title">
                                     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="#3b82f6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                     Recording incident for <strong>{{ s.first_name }} {{ s.last_name }}</strong>
                                 </div>
-
                                 <div class="panel-grid">
                                     <div class="form-field">
                                         <label>Date *</label>
@@ -333,7 +371,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                                         <label>Category *</label>
                                         <select v-model="quickForm.category" required>
                                             <option value="">Select category</option>
-                                            <option v-for="c in CATEGORIES" :key="c" :value="c">{{ c }}</option>
+                                            <option v-for="c in categories" :key="c.id" :value="c.name">{{ c.name }}</option>
                                         </select>
                                         <span v-if="quickForm.errors.category" class="field-error">{{ quickForm.errors.category }}</span>
                                     </div>
@@ -365,25 +403,88 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                                         <label>Consequence Period</label>
                                         <div style="display:flex;gap:10px;align-items:center;">
                                             <input v-model="quickForm.consequence_from" type="date" style="flex:1;" />
-                                            <span style="color:#94a3b8;font-size:.8rem;white-space:nowrap;">to</span>
+                                            <span style="color:#94a3b8;font-size:.8rem;">to</span>
                                             <input v-model="quickForm.consequence_to" type="date" style="flex:1;" />
                                         </div>
                                     </div>
                                 </div>
-
                                 <div class="panel-actions">
                                     <button type="button" class="btn-outline" @click="toggleRow(s.id)">Cancel</button>
                                     <Button size="sm" type="submit" :loading="quickForm.processing">Save Record</Button>
                                 </div>
                             </form>
                         </div>
-
                     </template>
                 </div>
             </div>
         </template>
 
-        <!-- ── Edit Modal ─────────────────────────────────────────────── -->
+        <!-- ═══════════════════════════════════════════════════════════
+             CATEGORY MANAGEMENT MODAL
+        ════════════════════════════════════════════════════════════ -->
+        <Teleport to="body">
+            <div v-if="showCatModal" class="modal-backdrop" @click.self="showCatModal = false">
+                <div class="modal cat-modal">
+                    <div class="modal-header">
+                        <div>
+                            <h3 class="modal-title">Manage Categories</h3>
+                            <p style="font-size:.78rem;color:#94a3b8;margin:2px 0 0;">Add, rename or remove incident categories for your school.</p>
+                        </div>
+                        <button @click="showCatModal = false" class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <!-- Category list -->
+                        <div class="cat-list">
+                            <div v-for="cat in categories" :key="cat.id" class="cat-row">
+                                <template v-if="editingCatId === cat.id">
+                                    <input
+                                        v-model="catEditForm.name"
+                                        class="cat-edit-input"
+                                        @keyup.enter="saveCatEdit(cat)"
+                                        @keyup.escape="cancelEditCat"
+                                        autofocus
+                                    />
+                                    <button class="cat-save-btn" @click="saveCatEdit(cat)" :disabled="catEditForm.processing">Save</button>
+                                    <button class="cat-icon-btn" @click="cancelEditCat" title="Cancel">
+                                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                </template>
+                                <template v-else>
+                                    <span class="cat-dot"></span>
+                                    <span class="cat-name">{{ cat.name }}</span>
+                                    <div class="cat-actions">
+                                        <button class="cat-icon-btn" @click="startEditCat(cat)" title="Rename">
+                                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                        </button>
+                                        <button class="cat-icon-btn cat-delete-btn" @click="deleteCat(cat.id)" title="Delete">
+                                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                            <div v-if="!categories.length" style="text-align:center;padding:24px;color:#94a3b8;font-size:.85rem;">No categories yet.</div>
+                        </div>
+
+                        <!-- Add new category -->
+                        <div class="cat-add-row">
+                            <input
+                                v-model="catAddForm.name"
+                                class="cat-add-input"
+                                placeholder="New category name…"
+                                @keyup.enter="addCat"
+                            />
+                            <Button size="sm" @click="addCat" :loading="catAddForm.processing">Add</Button>
+                        </div>
+                        <span v-if="catAddForm.errors.name" class="field-error">{{ catAddForm.errors.name }}</span>
+                    </div>
+                    <div class="modal-footer" style="justify-content:flex-end;">
+                        <Button variant="secondary" @click="showCatModal = false">Done</Button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- ── Edit Record Modal ───────────────────────────────────── -->
         <Teleport to="body">
             <div v-if="showEdit" class="modal-backdrop" @click.self="closeEdit">
                 <div class="modal" style="max-width:580px;width:100%;max-height:90vh;overflow-y:auto;">
@@ -401,7 +502,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                                 <label>Category *</label>
                                 <select v-model="form.category" required>
                                     <option value="">Select</option>
-                                    <option v-for="c in CATEGORIES" :key="c" :value="c">{{ c }}</option>
+                                    <option v-for="c in categories" :key="c.id" :value="c.name">{{ c.name }}</option>
                                 </select>
                             </div>
                             <div class="form-field">
@@ -471,22 +572,63 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
 </template>
 
 <style scoped>
-/* ── Stats ── */
+/* ── Stat cards ── */
 .disc-stats { display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px; }
-.stat-card .card-body { padding:16px; }
-.stat-value { font-size:1.5rem;font-weight:700; }
-.stat-label { font-size:.75rem;color:var(--text-muted);margin-top:4px; }
+.stat-card {
+    background:#fff;border-radius:12px;border:1px solid #f1f5f9;
+    padding:16px 20px;display:flex;align-items:center;gap:14px;
+    box-shadow:0 1px 3px rgba(0,0,0,.04);
+}
+.stat-icon { width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+.stat-value { font-size:1.6rem;font-weight:700;line-height:1; }
+.stat-label { font-size:.75rem;color:#94a3b8;margin-top:3px; }
+
+/* ── Manage categories button ── */
+.cat-btn {
+    display:inline-flex;align-items:center;gap:7px;padding:8px 16px;
+    background:#fff;border:1px solid #e2e8f0;border-radius:8px;
+    font-size:.85rem;font-weight:500;color:#475569;cursor:pointer;
+    transition:background .15s,border-color .15s;
+}
+.cat-btn:hover { background:#f8fafc;border-color:#cbd5e1;color:#1e293b; }
+
+/* ── Filter bar ── */
+.filter-bar { margin-bottom:16px; }
+.clear-btn {
+    padding:6px 12px;background:#fef2f2;border:1px solid #fecaca;
+    border-radius:6px;color:#dc2626;font-size:.8rem;cursor:pointer;
+}
+
+/* ── Records table ── */
+.disc-table { width:100%;border-collapse:collapse; }
+.disc-table th {
+    padding:11px 16px;background:#f8fafc;border-bottom:2px solid #e2e8f0;
+    font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;
+    letter-spacing:.04em;text-align:left;white-space:nowrap;
+}
+.disc-table td {
+    padding:13px 16px;border-bottom:1px solid #f1f5f9;
+    vertical-align:middle;
+}
+.disc-table tbody tr:hover { background:#f8fafc; }
+.disc-table tbody tr:last-child td { border-bottom:none; }
+.empty-td { text-align:center;padding:40px;color:#94a3b8;font-size:.9rem; }
+
+.sev-badge {
+    display:inline-block;padding:3px 10px;border-radius:20px;
+    font-size:.75rem;font-weight:600;text-transform:capitalize;
+}
 
 /* ── Back button ── */
 .back-btn {
     display:inline-flex;align-items:center;gap:6px;padding:7px 16px;
     background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;
     font-size:.85rem;font-weight:500;color:#475569;cursor:pointer;
-    transition:background .15s,color .15s;white-space:nowrap;
+    transition:background .15s;white-space:nowrap;
 }
 .back-btn:hover { background:#e2e8f0;color:#1e293b; }
 
-/* ── Add filter bar ── */
+/* ── Add-view filter bar ── */
 .add-filter-bar { display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap; }
 .add-filter-field { display:flex;flex-direction:column;gap:5px; }
 .add-filter-field select { width:200px; }
@@ -497,66 +639,72 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
     font-size:.8rem;font-weight:600;color:#1d4ed8;align-self:center;
 }
 
-/* ── Student list (flexbox rows) ── */
-.student-list-header {
-    display:flex;align-items:center;gap:0;
-    padding:10px 20px;border-bottom:2px solid #e2e8f0;
-    font-size:.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;
-    background:#f8fafc;
-}
-.student-list { }
+/* ── Student list ── */
+.col-num     { width:44px;text-align:center;flex-shrink:0; }
+.col-student { flex:1; }
+.col-roll    { width:100px;flex-shrink:0; }
+.col-action  { width:150px;flex-shrink:0; }
 
+.student-list-header {
+    display:flex;align-items:center;padding:10px 20px;
+    border-bottom:2px solid #e2e8f0;background:#f8fafc;
+    font-size:.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;
+}
 .student-item {
-    display:flex;align-items:center;gap:0;
-    padding:14px 20px;border-bottom:1px solid #f1f5f9;
-    transition:background .12s;cursor:default;
+    display:flex;align-items:center;padding:14px 20px;
+    border-bottom:1px solid #f1f5f9;transition:background .12s;
 }
 .student-item:hover { background:#f8fafc; }
 .student-item.item-active { background:#eff6ff;border-left:3px solid #3b82f6;padding-left:17px; }
-
-.item-num  { width:36px;font-size:.8rem;color:#cbd5e1;font-weight:600;text-align:center;flex-shrink:0; }
-.item-info { flex:1;display:flex;flex-direction:column;gap:2px; }
+.item-num  { font-size:.8rem;color:#cbd5e1;font-weight:600; }
+.item-info { display:flex;flex-direction:column;gap:2px; }
 .item-name { font-size:.95rem;font-weight:600;color:#1e293b; }
 .item-adm  { font-size:.72rem;color:#94a3b8; }
-.item-roll { width:100px;font-size:.85rem;color:#64748b; }
-.item-action { width:140px;display:flex;justify-content:flex-end; }
 
-.incident-btn {
-    padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:600;
-    cursor:pointer;border:none;transition:background .15s,color .15s;
-}
-.btn-add  { background:#3b82f6;color:#fff; }
-.btn-add:hover  { background:#2563eb; }
+.incident-btn { padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;border:none;transition:background .15s; }
+.btn-add    { background:#3b82f6;color:#fff; }
+.btn-add:hover    { background:#2563eb; }
 .btn-cancel { background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0; }
 .btn-cancel:hover { background:#e2e8f0;color:#1e293b; }
 
 /* ── Incident panel ── */
-.incident-panel {
-    background:#f0f9ff;border-left:3px solid #3b82f6;
-    border-bottom:1px solid #bae6fd;padding:20px 24px;
-}
-.panel-title {
-    display:flex;align-items:center;gap:7px;
-    font-size:.82rem;color:#3b82f6;margin-bottom:18px;
-    padding-bottom:14px;border-bottom:1px solid #bae6fd;
-}
+.incident-panel { background:#f0f9ff;border-left:3px solid #3b82f6;border-bottom:1px solid #bae6fd;padding:20px 24px; }
+.panel-title { display:flex;align-items:center;gap:7px;font-size:.82rem;color:#3b82f6;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #bae6fd; }
 .panel-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:16px; }
 .panel-full { grid-column:1/-1; }
 .panel-actions { display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid #bae6fd; }
 .field-error { color:#dc2626;font-size:.72rem;margin-top:3px;display:block; }
-
-.btn-outline {
-    padding:7px 18px;border:1px solid #e2e8f0;border-radius:8px;
-    background:#fff;color:#64748b;font-size:.85rem;font-weight:500;cursor:pointer;
-}
+.btn-outline { padding:7px 18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:.85rem;font-weight:500;cursor:pointer; }
 .btn-outline:hover { background:#f1f5f9;color:#1e293b; }
 
-/* ── Edit modal ── */
+/* ── Category modal ── */
+.cat-modal { width:min(460px,95vw); }
+.cat-list { border:1px solid #f1f5f9;border-radius:8px;overflow:hidden;margin-bottom:16px; }
+.cat-row {
+    display:flex;align-items:center;gap:10px;padding:11px 14px;
+    border-bottom:1px solid #f8fafc;background:#fff;
+}
+.cat-row:last-child { border-bottom:none; }
+.cat-dot { width:7px;height:7px;border-radius:50%;background:#e2e8f0;flex-shrink:0; }
+.cat-name { flex:1;font-size:.88rem;color:#1e293b; }
+.cat-actions { display:flex;gap:4px;opacity:0;transition:opacity .15s; }
+.cat-row:hover .cat-actions { opacity:1; }
+.cat-icon-btn { padding:4px;background:none;border:none;cursor:pointer;color:#94a3b8;border-radius:4px;display:flex;align-items:center; }
+.cat-icon-btn:hover { background:#f1f5f9;color:#475569; }
+.cat-delete-btn:hover { background:#fef2f2;color:#dc2626; }
+.cat-edit-input { flex:1;padding:5px 10px;border:1px solid #3b82f6;border-radius:6px;font-size:.88rem;outline:none; }
+.cat-save-btn { padding:5px 12px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:.82rem;font-weight:600;cursor:pointer; }
+.cat-save-btn:hover { background:#2563eb; }
+.cat-add-row { display:flex;gap:8px;align-items:center; }
+.cat-add-input { flex:1;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.88rem;outline:none; }
+.cat-add-input:focus { border-color:#3b82f6; }
+
+/* ── Modals ── */
 .modal-backdrop { position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:1000; }
-.modal { background:#fff;border-radius:12px;box-shadow:0 20px 25px -5px rgba(0,0,0,.1); }
-.modal-header { padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center; }
-.modal-title { font-size:1rem;font-weight:700;color:#1e293b; }
+.modal { background:#fff;border-radius:12px;box-shadow:0 20px 25px -5px rgba(0,0,0,.1);width:100%;max-height:90vh;overflow-y:auto; }
+.modal-header { padding:18px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:flex-start; }
+.modal-title { font-size:1rem;font-weight:700;color:#1e293b;margin:0; }
 .modal-close { background:none;border:none;font-size:1.5rem;line-height:1;color:#94a3b8;cursor:pointer; }
 .modal-body { padding:20px; }
-.modal-footer { padding:16px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;border-radius:0 0 12px 12px;display:flex;justify-content:flex-end;gap:10px; }
+.modal-footer { padding:14px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;border-radius:0 0 12px 12px;display:flex;gap:10px; }
 </style>

@@ -817,11 +817,15 @@ Route::middleware('auth')->group(function () {
         // Disciplinary / Behavior Tracking
         Route::middleware(['school.management:admin_only', 'module:students'])->group(function () {
             $DC = \App\Http\Controllers\School\DisciplinaryController::class;
-            Route::get('disciplinary',                                  [$DC, 'index'])          ->name('disciplinary.index');
-            Route::post('disciplinary',                                  [$DC, 'store'])          ->name('disciplinary.store');
-            Route::put('disciplinary/{disciplinaryRecord}',             [$DC, 'update'])         ->name('disciplinary.update');
-            Route::delete('disciplinary/{disciplinaryRecord}',          [$DC, 'destroy'])        ->name('disciplinary.destroy');
-            Route::get('students/{student}/disciplinary',               [$DC, 'studentHistory']) ->name('students.disciplinary.history');
+            Route::get('disciplinary',                                          [$DC, 'index'])           ->name('disciplinary.index');
+            Route::post('disciplinary',                                          [$DC, 'store'])           ->name('disciplinary.store');
+            Route::put('disciplinary/{disciplinaryRecord}',                     [$DC, 'update'])          ->name('disciplinary.update');
+            Route::delete('disciplinary/{disciplinaryRecord}',                  [$DC, 'destroy'])         ->name('disciplinary.destroy');
+            Route::get('students/{student}/disciplinary',                       [$DC, 'studentHistory'])  ->name('students.disciplinary.history');
+            // Category management
+            Route::post('disciplinary/categories',                              [$DC, 'storeCategory'])   ->name('disciplinary.categories.store');
+            Route::put('disciplinary/categories/{disciplinaryCategory}',        [$DC, 'updateCategory'])  ->name('disciplinary.categories.update');
+            Route::delete('disciplinary/categories/{disciplinaryCategory}',     [$DC, 'destroyCategory']) ->name('disciplinary.categories.destroy');
         });
 
         // Advanced Analytics Dashboard
