@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\School;
 
 use App\Http\Controllers\Controller;
+use App\Models\CourseClass;
 use App\Models\DisciplinaryRecord;
+use App\Models\Section;
 use App\Models\Student;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -24,8 +26,12 @@ class DisciplinaryController extends Controller
 
         $records  = $query->latest('incident_date')->paginate(20)->withQueryString();
         $students = Student::where('school_id', $schoolId)->where('status', 'active')
+            ->with(['currentAcademicHistory' => fn($q) => $q->select('id', 'student_id', 'class_id', 'section_id', 'roll_no', 'academic_year_id')])
             ->orderBy('first_name')
             ->get(['id', 'first_name', 'last_name', 'admission_no']);
+
+        $classes  = CourseClass::where('school_id', $schoolId)->orderBy('numeric_value')->orderBy('name')->get(['id', 'name']);
+        $sections = Section::where('school_id', $schoolId)->orderBy('name')->get(['id', 'course_class_id', 'name']);
 
         $summary = [
             'total'        => DisciplinaryRecord::where('school_id', $schoolId)->count(),
@@ -37,6 +43,8 @@ class DisciplinaryController extends Controller
         return Inertia::render('School/Disciplinary/Index', [
             'records'  => $records,
             'students' => $students,
+            'classes'  => $classes,
+            'sections' => $sections,
             'summary'  => $summary,
             'filters'  => $request->only('status', 'severity', 'student_id'),
         ]);
