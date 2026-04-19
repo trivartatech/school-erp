@@ -17,17 +17,24 @@ const CATEGORIES = ['Misconduct', 'Bullying', 'Damage to Property', 'Dress Code 
 const CONSEQUENCES = ['none', 'warning', 'detention', 'parent_call', 'suspension', 'expulsion'];
 const TODAY = new Date().toISOString().split('T')[0];
 
-// ── Filters ───────────────────────────────────────────────────────
+// ── Page view toggle ───────────────────────────────────────────────
+// 'list' = records table | 'add' = add-by-class page
+const view = ref('list');
+
+// ── List filters ───────────────────────────────────────────────────
 const filterStatus   = ref(props.filters?.status ?? '');
 const filterSeverity = ref(props.filters?.severity ?? '');
 const filterStudent  = ref(props.filters?.student_id ?? '');
 
 const applyFilters = () => {
-    router.get('/school/disciplinary', { status: filterStatus.value, severity: filterSeverity.value, student_id: filterStudent.value }, { preserveScroll: true, replace: true });
+    router.get('/school/disciplinary', {
+        status: filterStatus.value,
+        severity: filterSeverity.value,
+        student_id: filterStudent.value,
+    }, { preserveScroll: true, replace: true });
 };
 
-// ── Browse-to-Add (class/section → student rows) ─────────────────
-const showBrowse    = ref(false);
+// ── Add-by-class state ─────────────────────────────────────────────
 const browseClass   = ref('');
 const browseSection = ref('');
 const expandedId    = ref(null);
@@ -53,12 +60,17 @@ const quickForm = useForm({
     student_statement: '', notes: '',
 });
 
-const openBrowse = () => {
-    browseClass.value = ''; browseSection.value = ''; expandedId.value = null;
-    quickForm.reset();
-    showBrowse.value = true;
+const openAdd = () => {
+    browseClass.value = ''; browseSection.value = '';
+    expandedId.value = null; quickForm.reset();
+    view.value = 'add';
 };
-const closeBrowse = () => { showBrowse.value = false; expandedId.value = null; quickForm.reset(); };
+
+const backToList = () => {
+    view.value = 'list';
+    expandedId.value = null;
+    quickForm.reset();
+};
 
 const toggleRow = (studentId) => {
     if (expandedId.value === studentId) { expandedId.value = null; return; }
@@ -76,7 +88,7 @@ const submitQuick = () => {
     });
 };
 
-// ── Edit Modal ────────────────────────────────────────────────────
+// ── Edit modal ─────────────────────────────────────────────────────
 const showEdit   = ref(false);
 const editRecord = ref(null);
 
@@ -93,14 +105,15 @@ const openEdit = (r) => {
         student_id: r.student_id, incident_date: r.incident_date?.slice(0, 10),
         category: r.category, severity: r.severity, description: r.description,
         action_taken: r.action_taken ?? '', status: r.status,
-        consequence: r.consequence ?? '', consequence_from: r.consequence_from?.slice(0, 10) ?? '',
-        consequence_to: r.consequence_to?.slice(0, 10) ?? '', parent_notified: r.parent_notified,
+        consequence: r.consequence ?? '',
+        consequence_from: r.consequence_from?.slice(0, 10) ?? '',
+        consequence_to: r.consequence_to?.slice(0, 10) ?? '',
+        parent_notified: r.parent_notified,
         student_statement: r.student_statement ?? '', notes: r.notes ?? '',
     });
     showEdit.value = true;
 };
 const closeEdit = () => { showEdit.value = false; editRecord.value = null; };
-
 const submitEdit = () => {
     form.put(`/school/disciplinary/${editRecord.value.id}`, { preserveScroll: true, onSuccess: closeEdit });
 };
@@ -116,241 +129,264 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
 
 <template>
     <SchoolLayout title="Disciplinary Records">
-        <div class="page-header">
-            <h1 class="page-header-title">Disciplinary Records</h1>
-            <Button @click="openBrowse">+ Add Record</Button>
-        </div>
 
-        <!-- Summary -->
-        <div class="disc-stats">
-            <div class="card stat-card"><div class="card-body text-center">
-                <div class="stat-value" style="color:#1d4ed8;">{{ summary.total }}</div>
-                <div class="stat-label">Total Records</div>
-            </div></div>
-            <div class="card stat-card"><div class="card-body text-center">
-                <div class="stat-value" style="color:#d97706;">{{ summary.open }}</div>
-                <div class="stat-label">Open Cases</div>
-            </div></div>
-            <div class="card stat-card"><div class="card-body text-center">
-                <div class="stat-value" style="color:#7c3aed;">{{ summary.this_month }}</div>
-                <div class="stat-label">This Month</div>
-            </div></div>
-            <div class="card stat-card"><div class="card-body text-center">
-                <div class="stat-value" style="color:#dc2626;">{{ summary.major }}</div>
-                <div class="stat-label">Major Incidents</div>
-            </div></div>
-        </div>
-
-        <!-- Filters -->
-        <div class="card" style="margin-bottom:16px;">
-            <div class="card-body" style="display:flex;gap:12px;flex-wrap:wrap;">
-                <select v-model="filterStatus" @change="applyFilters" style="width:150px;">
-                    <option value="">All Statuses</option>
-                    <option value="open">Open</option>
-                    <option value="under_review">Under Review</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="escalated">Escalated</option>
-                </select>
-                <select v-model="filterSeverity" @change="applyFilters" style="width:150px;">
-                    <option value="">All Severities</option>
-                    <option value="minor">Minor</option>
-                    <option value="moderate">Moderate</option>
-                    <option value="major">Major</option>
-                </select>
-                <select v-model="filterStudent" @change="applyFilters" style="width:200px;">
-                    <option value="">All Students</option>
-                    <option v-for="s in students" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }}</option>
-                </select>
+        <!-- ═══════════════════════════════════════════════════════════
+             LIST VIEW
+        ════════════════════════════════════════════════════════════ -->
+        <template v-if="view === 'list'">
+            <div class="page-header">
+                <h1 class="page-header-title">Disciplinary Records</h1>
+                <Button @click="openAdd">+ Add Record</Button>
             </div>
-        </div>
 
-        <!-- Records Table -->
-        <div class="card">
-            <div style="overflow-x:auto;">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Student</th>
-                            <th>Date</th>
-                            <th>Category</th>
-                            <th>Severity</th>
-                            <th>Status</th>
-                            <th>Consequence</th>
-                            <th>Reported By</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="r in records.data" :key="r.id">
-                            <td>
-                                <div style="font-weight:500;">{{ r.student?.first_name }} {{ r.student?.last_name }}</div>
-                                <div style="font-size:.7rem;color:#94a3b8;">{{ r.student?.admission_no }}</div>
-                            </td>
-                            <td style="white-space:nowrap;">{{ fmtDate(r.incident_date) }}</td>
-                            <td>{{ r.category }}</td>
-                            <td>
-                                <span style="font-weight:600;text-transform:capitalize;" :style="{ color: severityColor[r.severity] }">{{ r.severity }}</span>
-                            </td>
-                            <td><span class="badge" :class="statusBadge[r.status]" style="text-transform:capitalize;">{{ r.status?.replace('_', ' ') }}</span></td>
-                            <td style="text-transform:capitalize;font-size:.8rem;">{{ r.consequence ? r.consequence.replace('_', ' ') : '—' }}</td>
-                            <td style="font-size:.8rem;color:#64748b;">{{ r.reported_by?.name || '—' }}</td>
-                            <td>
-                                <div style="display:flex;gap:4px;">
-                                    <Button variant="secondary" size="xs" @click="openEdit(r)">Edit</Button>
-                                    <Button variant="danger" size="xs" @click="deleteRecord(r.id)">Del</Button>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr v-if="!records.data?.length">
-                            <td colspan="8" style="text-align:center;padding:32px;color:#94a3b8;">No records found.</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <!-- Summary cards -->
+            <div class="disc-stats">
+                <div class="card stat-card"><div class="card-body text-center">
+                    <div class="stat-value" style="color:#1d4ed8;">{{ summary.total }}</div>
+                    <div class="stat-label">Total Records</div>
+                </div></div>
+                <div class="card stat-card"><div class="card-body text-center">
+                    <div class="stat-value" style="color:#d97706;">{{ summary.open }}</div>
+                    <div class="stat-label">Open Cases</div>
+                </div></div>
+                <div class="card stat-card"><div class="card-body text-center">
+                    <div class="stat-value" style="color:#7c3aed;">{{ summary.this_month }}</div>
+                    <div class="stat-label">This Month</div>
+                </div></div>
+                <div class="card stat-card"><div class="card-body text-center">
+                    <div class="stat-value" style="color:#dc2626;">{{ summary.major }}</div>
+                    <div class="stat-label">Major Incidents</div>
+                </div></div>
             </div>
-        </div>
 
-        <!-- ── Browse-to-Add Modal ───────────────────────────────────── -->
-        <Teleport to="body">
-            <div v-if="showBrowse" class="modal-backdrop" @click.self="closeBrowse">
-                <div class="modal browse-modal">
-                    <div class="modal-header">
-                        <h3 class="modal-title">Add Disciplinary Incident</h3>
-                        <button @click="closeBrowse" class="modal-close">&times;</button>
-                    </div>
+            <!-- Filters -->
+            <div class="card" style="margin-bottom:16px;">
+                <div class="card-body" style="display:flex;gap:12px;flex-wrap:wrap;">
+                    <select v-model="filterStatus" @change="applyFilters" style="width:150px;">
+                        <option value="">All Statuses</option>
+                        <option value="open">Open</option>
+                        <option value="under_review">Under Review</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="escalated">Escalated</option>
+                    </select>
+                    <select v-model="filterSeverity" @change="applyFilters" style="width:150px;">
+                        <option value="">All Severities</option>
+                        <option value="minor">Minor</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="major">Major</option>
+                    </select>
+                    <select v-model="filterStudent" @change="applyFilters" style="width:200px;">
+                        <option value="">All Students</option>
+                        <option v-for="s in students" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }}</option>
+                    </select>
+                </div>
+            </div>
 
-                    <!-- Class / Section selectors -->
-                    <div class="browse-filters">
-                        <div class="browse-filter-group">
-                            <label>Class</label>
-                            <select v-model="browseClass" @change="browseSection = ''; expandedId = null; quickForm.reset();">
+            <!-- Records table -->
+            <div class="card">
+                <div style="overflow-x:auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th>Consequence</th>
+                                <th>Reported By</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="r in records.data" :key="r.id">
+                                <td>
+                                    <div style="font-weight:500;">{{ r.student?.first_name }} {{ r.student?.last_name }}</div>
+                                    <div style="font-size:.7rem;color:#94a3b8;">{{ r.student?.admission_no }}</div>
+                                </td>
+                                <td style="white-space:nowrap;">{{ fmtDate(r.incident_date) }}</td>
+                                <td>{{ r.category }}</td>
+                                <td>
+                                    <span style="font-weight:600;text-transform:capitalize;" :style="{ color: severityColor[r.severity] }">{{ r.severity }}</span>
+                                </td>
+                                <td><span class="badge" :class="statusBadge[r.status]" style="text-transform:capitalize;">{{ r.status?.replace('_', ' ') }}</span></td>
+                                <td style="text-transform:capitalize;font-size:.8rem;">{{ r.consequence ? r.consequence.replace('_', ' ') : '—' }}</td>
+                                <td style="font-size:.8rem;color:#64748b;">{{ r.reported_by?.name || '—' }}</td>
+                                <td>
+                                    <div style="display:flex;gap:4px;">
+                                        <Button variant="secondary" size="xs" @click="openEdit(r)">Edit</Button>
+                                        <Button variant="danger" size="xs" @click="deleteRecord(r.id)">Del</Button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr v-if="!records.data?.length">
+                                <td colspan="8" style="text-align:center;padding:32px;color:#94a3b8;">No records found.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </template>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             ADD VIEW — class/section browse with inline incident forms
+        ════════════════════════════════════════════════════════════ -->
+        <template v-else-if="view === 'add'">
+            <!-- Page header -->
+            <div class="page-header">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <button class="back-btn" @click="backToList">
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        Back
+                    </button>
+                    <h1 class="page-header-title" style="margin:0;">Add Disciplinary Incident</h1>
+                </div>
+            </div>
+
+            <!-- Class / Section filter card -->
+            <div class="card" style="margin-bottom:16px;">
+                <div class="card-body">
+                    <div class="add-filters">
+                        <div class="filter-group">
+                            <label class="filter-label">Class</label>
+                            <select v-model="browseClass" class="filter-select" @change="browseSection = ''; expandedId = null; quickForm.reset();">
                                 <option value="">— Select Class —</option>
                                 <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
                             </select>
                         </div>
-                        <div class="browse-filter-group">
-                            <label>Section</label>
-                            <select v-model="browseSection" :disabled="!browseClass" @change="expandedId = null; quickForm.reset();">
+                        <div class="filter-group">
+                            <label class="filter-label">Section</label>
+                            <select v-model="browseSection" class="filter-select" :disabled="!browseClass" @change="expandedId = null; quickForm.reset();">
                                 <option value="">All Sections</option>
                                 <option v-for="s in filteredSections" :key="s.id" :value="s.id">{{ s.name }}</option>
                             </select>
                         </div>
-                        <div v-if="browseClass && browsedStudents.length" class="browse-count">
+                        <div v-if="browseClass && browsedStudents.length" class="student-count-badge">
                             {{ browsedStudents.length }} student{{ browsedStudents.length !== 1 ? 's' : '' }}
                         </div>
                     </div>
-
-                    <!-- Prompt when no class picked -->
-                    <div v-if="!browseClass" class="browse-empty">
-                        <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        <p>Select a class above to view students</p>
-                    </div>
-
-                    <!-- No students found -->
-                    <div v-else-if="!browsedStudents.length" class="browse-empty">
-                        <p style="color:#94a3b8;">No students found for the selected class/section.</p>
-                    </div>
-
-                    <!-- Student table with inline forms -->
-                    <div v-else class="browse-table-wrap">
-                        <table class="table browse-table">
-                            <thead>
-                                <tr>
-                                    <th style="width:32px;">#</th>
-                                    <th>Student</th>
-                                    <th style="width:80px;">Roll No</th>
-                                    <th style="width:130px;text-align:right;">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <template v-for="(s, idx) in browsedStudents" :key="s.id">
-                                    <!-- Student row -->
-                                    <tr :class="['student-row', { 'row-active': expandedId === s.id }]">
-                                        <td style="color:#94a3b8;font-size:.8rem;">{{ idx + 1 }}</td>
-                                        <td>
-                                            <div style="font-weight:500;">{{ s.first_name }} {{ s.last_name }}</div>
-                                            <div style="font-size:.7rem;color:#94a3b8;">{{ s.admission_no }}</div>
-                                        </td>
-                                        <td style="font-size:.85rem;color:#64748b;">{{ s.current_academic_history?.roll_no || '—' }}</td>
-                                        <td style="text-align:right;">
-                                            <Button
-                                                :variant="expandedId === s.id ? 'secondary' : 'primary'"
-                                                size="xs"
-                                                @click="toggleRow(s.id)"
-                                            >
-                                                {{ expandedId === s.id ? '✕ Cancel' : '+ Add Incident' }}
-                                            </Button>
-                                        </td>
-                                    </tr>
-
-                                    <!-- Inline incident form -->
-                                    <tr v-if="expandedId === s.id" class="inline-form-row">
-                                        <td colspan="4" style="padding:0;">
-                                            <form @submit.prevent="submitQuick" class="quick-form">
-                                                <div class="quick-grid">
-                                                    <div class="form-field">
-                                                        <label>Date *</label>
-                                                        <input v-model="quickForm.incident_date" type="date" required />
-                                                        <span v-if="quickForm.errors.incident_date" class="field-error">{{ quickForm.errors.incident_date }}</span>
-                                                    </div>
-                                                    <div class="form-field">
-                                                        <label>Category *</label>
-                                                        <select v-model="quickForm.category" required>
-                                                            <option value="">Select</option>
-                                                            <option v-for="c in CATEGORIES" :key="c" :value="c">{{ c }}</option>
-                                                        </select>
-                                                        <span v-if="quickForm.errors.category" class="field-error">{{ quickForm.errors.category }}</span>
-                                                    </div>
-                                                    <div class="form-field">
-                                                        <label>Severity *</label>
-                                                        <select v-model="quickForm.severity" required>
-                                                            <option value="minor">Minor</option>
-                                                            <option value="moderate">Moderate</option>
-                                                            <option value="major">Major</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="form-field" style="grid-column:1/-1;">
-                                                        <label>Description *</label>
-                                                        <textarea v-model="quickForm.description" rows="2" required placeholder="Describe the incident…"></textarea>
-                                                        <span v-if="quickForm.errors.description" class="field-error">{{ quickForm.errors.description }}</span>
-                                                    </div>
-                                                    <div class="form-field">
-                                                        <label>Consequence</label>
-                                                        <select v-model="quickForm.consequence">
-                                                            <option value="">— None —</option>
-                                                            <option v-for="c in CONSEQUENCES" :key="c" :value="c" style="text-transform:capitalize;">{{ c.replace('_', ' ') }}</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="form-field">
-                                                        <label>Action Taken</label>
-                                                        <input v-model="quickForm.action_taken" type="text" placeholder="Optional" />
-                                                    </div>
-                                                    <div v-if="quickForm.consequence === 'suspension' || quickForm.consequence === 'detention'" class="form-field" style="grid-column:1/-1;">
-                                                        <label>Consequence Period</label>
-                                                        <div style="display:flex;gap:6px;">
-                                                            <input v-model="quickForm.consequence_from" type="date" style="flex:1;" />
-                                                            <span style="align-self:center;color:#94a3b8;">to</span>
-                                                            <input v-model="quickForm.consequence_to" type="date" style="flex:1;" />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="quick-actions">
-                                                    <Button variant="secondary" size="sm" type="button" @click="toggleRow(s.id)">Cancel</Button>
-                                                    <Button size="sm" type="submit" :loading="quickForm.processing">Save Record</Button>
-                                                </div>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div class="modal-footer" style="justify-content:flex-start;">
-                        <Button variant="secondary" @click="closeBrowse">Close</Button>
-                    </div>
                 </div>
             </div>
-        </Teleport>
+
+            <!-- Empty prompt -->
+            <div v-if="!browseClass" class="empty-prompt card">
+                <div class="card-body empty-prompt-body">
+                    <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <p style="margin:0;color:#94a3b8;font-size:.95rem;">Select a class above to view students</p>
+                </div>
+            </div>
+
+            <div v-else-if="!browsedStudents.length" class="empty-prompt card">
+                <div class="card-body empty-prompt-body">
+                    <p style="margin:0;color:#94a3b8;">No students found for the selected class / section.</p>
+                </div>
+            </div>
+
+            <!-- Student table with inline forms -->
+            <div v-else class="card">
+                <div style="overflow-x:auto;">
+                    <table class="table add-table">
+                        <thead>
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Student</th>
+                                <th style="width:90px;">Roll No</th>
+                                <th style="width:150px;text-align:right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template v-for="(s, idx) in browsedStudents" :key="s.id">
+
+                                <!-- Student row -->
+                                <tr :class="['student-row', { 'row-active': expandedId === s.id }]">
+                                    <td style="color:#94a3b8;font-size:.8rem;font-weight:500;">{{ idx + 1 }}</td>
+                                    <td>
+                                        <div style="font-weight:600;color:#1e293b;">{{ s.first_name }} {{ s.last_name }}</div>
+                                        <div style="font-size:.72rem;color:#94a3b8;">{{ s.admission_no }}</div>
+                                    </td>
+                                    <td style="font-size:.85rem;color:#64748b;">{{ s.current_academic_history?.roll_no || '—' }}</td>
+                                    <td style="text-align:right;">
+                                        <Button
+                                            :variant="expandedId === s.id ? 'secondary' : 'primary'"
+                                            size="sm"
+                                            @click="toggleRow(s.id)"
+                                        >
+                                            {{ expandedId === s.id ? '✕ Cancel' : '+ Add Incident' }}
+                                        </Button>
+                                    </td>
+                                </tr>
+
+                                <!-- Inline incident form -->
+                                <tr v-if="expandedId === s.id" class="form-row">
+                                    <td colspan="4" style="padding:0;border-bottom:2px solid #3b82f6;">
+                                        <form @submit.prevent="submitQuick" class="incident-form">
+                                            <div class="incident-form-header">
+                                                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                                Logging incident for <strong>{{ s.first_name }} {{ s.last_name }}</strong>
+                                            </div>
+                                            <div class="incident-grid">
+                                                <div class="form-field">
+                                                    <label>Date *</label>
+                                                    <input v-model="quickForm.incident_date" type="date" required />
+                                                    <span v-if="quickForm.errors.incident_date" class="field-error">{{ quickForm.errors.incident_date }}</span>
+                                                </div>
+                                                <div class="form-field">
+                                                    <label>Category *</label>
+                                                    <select v-model="quickForm.category" required>
+                                                        <option value="">Select category</option>
+                                                        <option v-for="c in CATEGORIES" :key="c" :value="c">{{ c }}</option>
+                                                    </select>
+                                                    <span v-if="quickForm.errors.category" class="field-error">{{ quickForm.errors.category }}</span>
+                                                </div>
+                                                <div class="form-field">
+                                                    <label>Severity *</label>
+                                                    <select v-model="quickForm.severity" required>
+                                                        <option value="minor">Minor</option>
+                                                        <option value="moderate">Moderate</option>
+                                                        <option value="major">Major</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-field">
+                                                    <label>Consequence</label>
+                                                    <select v-model="quickForm.consequence">
+                                                        <option value="">— None —</option>
+                                                        <option v-for="c in CONSEQUENCES" :key="c" :value="c" style="text-transform:capitalize;">{{ c.replace('_', ' ') }}</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-field" style="grid-column:1/-1;">
+                                                    <label>Description *</label>
+                                                    <textarea v-model="quickForm.description" rows="2" required placeholder="Describe the incident…"></textarea>
+                                                    <span v-if="quickForm.errors.description" class="field-error">{{ quickForm.errors.description }}</span>
+                                                </div>
+                                                <div class="form-field" style="grid-column:1/-1;">
+                                                    <label>Action Taken</label>
+                                                    <input v-model="quickForm.action_taken" type="text" placeholder="Optional — what action was taken?" />
+                                                </div>
+                                                <div v-if="quickForm.consequence === 'suspension' || quickForm.consequence === 'detention'" class="form-field" style="grid-column:1/-1;">
+                                                    <label>Consequence Period</label>
+                                                    <div style="display:flex;gap:8px;align-items:center;">
+                                                        <input v-model="quickForm.consequence_from" type="date" style="flex:1;" />
+                                                        <span style="color:#94a3b8;font-size:.8rem;">to</span>
+                                                        <input v-model="quickForm.consequence_to" type="date" style="flex:1;" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="incident-form-actions">
+                                                <Button variant="secondary" size="sm" type="button" @click="toggleRow(s.id)">Cancel</Button>
+                                                <Button size="sm" type="submit" :loading="quickForm.processing">Save Record</Button>
+                                            </div>
+                                        </form>
+                                    </td>
+                                </tr>
+
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </template>
 
         <!-- ── Edit Modal ─────────────────────────────────────────────── -->
         <Teleport to="body">
@@ -435,16 +471,60 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
                 </div>
             </div>
         </Teleport>
+
     </SchoolLayout>
 </template>
 
 <style scoped>
+/* ── Stats ── */
 .disc-stats { display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px; }
 .stat-card .card-body { padding:16px; }
 .stat-value { font-size:1.5rem;font-weight:700; }
 .stat-label { font-size:.75rem;color:var(--text-muted);margin-top:4px; }
 
-/* Modals */
+/* ── Back button ── */
+.back-btn {
+    display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
+    background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;
+    font-size:.85rem;font-weight:500;color:#475569;cursor:pointer;
+    transition:background .15s,color .15s;
+}
+.back-btn:hover { background:#e2e8f0;color:#1e293b; }
+
+/* ── Add-view filters ── */
+.add-filters { display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap; }
+.filter-group { display:flex;flex-direction:column;gap:5px; }
+.filter-label { font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em; }
+.filter-select { width:200px; }
+.student-count-badge {
+    margin-left:auto;padding:6px 14px;background:#eff6ff;
+    border:1px solid #bfdbfe;border-radius:20px;
+    font-size:.8rem;font-weight:600;color:#1d4ed8;align-self:center;
+}
+
+/* ── Empty prompt ── */
+.empty-prompt { margin-top:8px; }
+.empty-prompt-body { display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 20px; }
+
+/* ── Student table ── */
+.add-table td, .add-table th { vertical-align:middle; }
+.student-row { transition:background .12s; }
+.student-row:hover { background:#f8fafc; }
+.student-row.row-active { background:#eff6ff;border-left:3px solid #3b82f6; }
+
+/* ── Inline incident form ── */
+.form-row { background:#f0f9ff; }
+.incident-form { padding:20px 24px; }
+.incident-form-header {
+    display:flex;align-items:center;gap:8px;
+    font-size:.82rem;color:#3b82f6;margin-bottom:16px;
+    padding-bottom:12px;border-bottom:1px solid #bae6fd;
+}
+.incident-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:14px; }
+.incident-form-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid #bae6fd; }
+.field-error { color:#dc2626;font-size:.72rem;margin-top:3px;display:block; }
+
+/* ── Edit modal ── */
 .modal-backdrop { position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:1000; }
 .modal { background:#fff;border-radius:12px;box-shadow:0 20px 25px -5px rgba(0,0,0,.1); }
 .modal-header { padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center; }
@@ -452,29 +532,4 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
 .modal-close { background:none;border:none;font-size:1.5rem;line-height:1;color:#94a3b8;cursor:pointer; }
 .modal-body { padding:20px; }
 .modal-footer { padding:16px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;border-radius:0 0 12px 12px;display:flex;justify-content:flex-end;gap:10px; }
-
-/* Browse modal */
-.browse-modal { width:min(860px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden; }
-.browse-filters { display:flex;align-items:flex-end;gap:16px;padding:14px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0; }
-.browse-filter-group { display:flex;flex-direction:column;gap:4px; }
-.browse-filter-group label { font-size:.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.03em; }
-.browse-filter-group select { width:180px; }
-.browse-count { margin-left:auto;font-size:.8rem;color:#64748b;align-self:center; }
-
-.browse-empty { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:48px 20px;color:#94a3b8;font-size:.9rem; }
-.browse-table-wrap { overflow-y:auto;flex:1;min-height:0; }
-.browse-table { margin:0; }
-.browse-table td, .browse-table th { vertical-align:middle; }
-
-/* Student rows */
-.student-row { transition:background .15s; }
-.student-row:hover { background:#f8fafc; }
-.student-row.row-active { background:#eff6ff; }
-
-/* Inline form */
-.inline-form-row td { background:#f0f9ff;border-top:1px dashed #bae6fd;border-bottom:1px dashed #bae6fd; }
-.quick-form { padding:14px 16px; }
-.quick-grid { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px; }
-.quick-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:12px; }
-.field-error { color:#dc2626;font-size:.72rem;margin-top:2px;display:block; }
 </style>
